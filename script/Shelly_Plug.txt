@@ -136,9 +136,15 @@ V-ID/LAMP0 {
 
     if (opt(0)==1 || opt(0)==8){
         state0 = 1;
+        if (DEBUG == 1) {
+        srvError("1 - Shelly LAMP0: opt=%d state=%d", opt(0), state1);
+        }
         setStatus(DEST, "HOST|on|0|state=LAMP0");
     } else if(opt(0)==0 || opt(0)==9){
         state0 = 0;
+        if (DEBUG == 1) {
+        srvError("0 - Shelly LAMP0: opt=%d state=%d", opt(0), state1);
+        }
         setStatus(DEST, "HOST|off|0|state=LAMP0");
     }
 }
@@ -156,9 +162,16 @@ V-ID/LAMP1 {
 
     if (opt(0)==1 || opt(0)==8){
         state1 = 1;
+        if (DEBUG == 1) {
+        srvError("1 - Shelly LAMP1: opt=%d state=%d", opt(0), state1);
+        }
+
         setStatus(DEST, "HOST|on|1|state=LAMP1");
     } else if(opt(0)==0 || opt(0)==9){
         state1 = 0;
+        if (DEBUG == 1) {
+        srvError("0 - Shelly LAMP1: opt=%d state=%d", opt(0), state1);
+        }
         setStatus(DEST, "HOST|off|1|state=LAMP1");
     }
 }

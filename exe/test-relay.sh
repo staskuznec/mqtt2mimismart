@@ -9,7 +9,7 @@
 #   ./test-relay.sh --ip 192.168.20.222   # другой адрес реле
 #   ./test-relay.sh --channel 1 --switch  # щёлкать канал 1
 #
-# Логин и пароль реле берутся из shelly.yaml, либо из переменных окружения
+# Логин и пароль реле берутся из 94.yaml, либо из переменных окружения
 # SHELLY_USER и SHELLY_PASSWORD, либо из флагов --user / --password.
 # Они нужны только для curl-проверок: сам бинарник читает их из конфига.
 
@@ -37,7 +37,7 @@ done
 
 cd "$(dirname "$0")" || exit 1
 
-# Имя бинарника совпадает с Makefile: собираем туда же, где лежит shelly.yaml,
+# Имя бинарника совпадает с Makefile: собираем туда же, где лежит 94.yaml,
 # потому что конфиг ищется рядом с исполняемым файлом.
 BIN="./${BINARY:-93.sh}"
 PKG="./cmd/shelly-2.5"
@@ -62,9 +62,9 @@ run() {
 }
 
 # Учётные данные подтягиваем из конфига, если не заданы явно.
-if [[ -z "$USERNAME" && -f shelly.yaml ]]; then
-	USERNAME="$(sed -n 's/^[[:space:]]*user:[[:space:]]*"\{0,1\}\([^"#]*\)"\{0,1\}.*/\1/p' shelly.yaml | head -1 | tr -d ' ')"
-	PASSWORD="$(sed -n 's/^[[:space:]]*password:[[:space:]]*"\{0,1\}\([^"#]*\)"\{0,1\}.*/\1/p' shelly.yaml | head -1 | tr -d ' ')"
+if [[ -z "$USERNAME" && -f 94.yaml ]]; then
+	USERNAME="$(sed -n 's/^[[:space:]]*user:[[:space:]]*"\{0,1\}\([^"#]*\)"\{0,1\}.*/\1/p' 94.yaml | head -1 | tr -d ' ')"
+	PASSWORD="$(sed -n 's/^[[:space:]]*password:[[:space:]]*"\{0,1\}\([^"#]*\)"\{0,1\}.*/\1/p' 94.yaml | head -1 | tr -d ' ')"
 fi
 if [[ -n "$USERNAME" ]]; then
 	CURL+=(--user "$USERNAME:$PASSWORD")
@@ -101,7 +101,7 @@ step "3. Текущее состояние обоих каналов"
 step "4. Сборка бинарника"
 go build -o "$BIN" "$PKG" || fail "сборка не прошла"
 ok "собран $BIN из $PKG"
-[[ -f shelly.yaml ]] || fail "рядом с бинарником нет shelly.yaml — конфиг ищется именно там"
+[[ -f 94.yaml ]] || fail "рядом с бинарником нет shelly.yaml — конфиг ищется именно там"
 
 step "5. Сухой прогон: опрос статуса через бинарник"
 run "$IP|status|" || fail "бинарник вернул ошибку на status"
@@ -123,5 +123,5 @@ run "$IP|off|$CHANNEL" || fail "не удалось выключить кана�
 sleep 2
 "${CURL[@]}" "http://$IP/relay/$CHANNEL" | tr ',' '\n' | grep -E '"ison"|"source"' || true
 
-printf '\n\033[32mВсе этапы пройдены.\033[0m Дальше: пропишите реальные id/subid в shelly.yaml,\n'
+printf '\n\033[32mВсе этапы пройдены.\033[0m Дальше: пропишите реальные id/subid в 94.yaml,\n'
 printf 'уберите SHELLY_DRY_RUN и проверьте, что значения доходят до умного дома.\n'

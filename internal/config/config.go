@@ -18,7 +18,7 @@ import (
 
 // DefaultFileName — имя конфига, которое ищется рядом с бинарником,
 // если не задан путь через переменную окружения SHELLY_CONFIG.
-const DefaultFileName = "shelly.yaml"
+const DefaultFileName = "94.yaml"
 
 // EnvConfigPath — переменная окружения с путём к конфигу.
 const EnvConfigPath = "SHELLY_CONFIG"
@@ -260,7 +260,7 @@ func Load() (*Config, string, error) {
 // resolvePath определяет путь к конфигу.
 //
 // Порядок такой: явный путь из SHELLY_CONFIG, затем файл с именем самого
-// бинарника и расширением .yaml рядом с ним, затем shelly.yaml там же.
+// бинарника и расширением .yaml рядом с ним, затем 94.yaml там же.
 // Именование по бинарнику позволяет держать рядом несколько копий с разными
 // настройками: 93.sh читает 93.yaml, shelly25 читает shelly25.yaml.
 func resolvePath() (string, error) {
