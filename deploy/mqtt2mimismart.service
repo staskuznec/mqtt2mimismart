@@ -8,8 +8,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=sh2
-Group=sh2
+User=root
+Group=root
 
 # Настроек в командной строке ровно две: где слушать веб и где лежит база.
 # Всё остальное — брокер, сервер SHS, ключ, связки — задаётся в веб-интерфейсе.

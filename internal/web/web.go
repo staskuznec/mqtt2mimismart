@@ -1,8 +1,7 @@
 // Package web — HTTP-интерфейс шлюза.
 //
-// Пока здесь только проверка состояния и заглушка на корне. Разделы «Обзор»,
-// «Топики», «Элементы» и «Связки» появятся, когда заработают клиенты MQTT и
-// SHS: показывать в них до этого нечего.
+// Пока здесь проверка состояния, список увиденных топиков и заглушка на
+// корне. Разделы «Элементы» и «Связки» появятся вместе с движком связок.
 package web
 
 import (
@@ -12,6 +11,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/staskuznec/mqtt2mimismart/internal/mqtt"
+	"github.com/staskuznec/mqtt2mimismart/internal/shs"
 	"github.com/staskuznec/mqtt2mimismart/internal/store"
 )
 
@@ -19,12 +20,21 @@ import (
 // отвечать быстро: по ней systemd и мониторинг судят, жив ли демон.
 const healthTimeout = 2 * time.Second
 
+// Status — источники состояния подключений. Поля пустые, пока настройки не
+// заполнены и клиенты не созданы: веб обязан работать и до этого.
+type Status struct {
+	SHS    func() shs.Status
+	MQTT   func() mqtt.Status
+	Topics func() []mqtt.TopicInfo
+}
+
 // Handler собирает маршруты веб-интерфейса.
-func Handler(log *slog.Logger, db *store.Store, version string) http.Handler {
-	s := &server{log: log, db: db, version: version, started: time.Now()}
+func Handler(log *slog.Logger, db *store.Store, version string, status Status) http.Handler {
+	s := &server{log: log, db: db, version: version, status: status, started: time.Now()}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
+	mux.HandleFunc("GET /api/topics", s.topics)
 	mux.HandleFunc("GET /{$}", s.index)
 
 	return s.logRequests(mux)
@@ -34,19 +44,42 @@ type server struct {
 	log     *slog.Logger
 	db      *store.Store
 	version string
+	status  Status
 	started time.Time
 }
 
 // health отдаёт состояние демона в JSON.
 type health struct {
-	Status     string `json:"status"`
-	Version    string `json:"version"`
-	UptimeSec  int64  `json:"uptime_sec"`
-	DBPath     string `json:"db_path"`
-	DBSchema   int    `json:"db_schema"`
-	DBOK       bool   `json:"db_ok"`
-	Configured bool   `json:"configured"`
-	Error      string `json:"error,omitempty"`
+	Status     string      `json:"status"`
+	Version    string      `json:"version"`
+	UptimeSec  int64       `json:"uptime_sec"`
+	DBPath     string      `json:"db_path"`
+	DBSchema   int         `json:"db_schema"`
+	DBOK       bool        `json:"db_ok"`
+	Configured bool        `json:"configured"`
+	SHS        *shsHealth  `json:"shs,omitempty"`
+	MQTT       *mqttHealth `json:"mqtt,omitempty"`
+	Error      string      `json:"error,omitempty"`
+}
+
+type shsHealth struct {
+	Phase      string `json:"phase"`
+	ClientID   uint16 `json:"client_id"`
+	Events     uint64 `json:"events"`
+	Sent       uint64 `json:"sent"`
+	Connects   uint64 `json:"connects"`
+	LogicBytes int    `json:"logic_bytes"`
+	LastError  string `json:"last_error,omitempty"`
+}
+
+type mqttHealth struct {
+	Connected   bool   `json:"connected"`
+	ClientID    string `json:"client_id"`
+	Received    uint64 `json:"received"`
+	Published   uint64 `json:"published"`
+	Connects    uint64 `json:"connects"`
+	KnownTopics int    `json:"known_topics"`
+	LastError   string `json:"last_error,omitempty"`
 }
 
 func (s *server) health(w http.ResponseWriter, r *http.Request) {
@@ -73,12 +106,82 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 		h.Configured = cfg.Ready()
 	}
 
+	if s.status.SHS != nil {
+		st := s.status.SHS()
+		h.SHS = &shsHealth{
+			Phase:      string(st.Phase),
+			ClientID:   st.ClientID,
+			Events:     st.Events,
+			Sent:       st.Sent,
+			Connects:   st.Connects,
+			LogicBytes: st.LogicBytes,
+			LastError:  st.LastError,
+		}
+		if st.Phase != shs.PhaseConnected && st.Phase != shs.PhaseSyncing {
+			h.Status = "degraded"
+		}
+	}
+	if s.status.MQTT != nil {
+		st := s.status.MQTT()
+		h.MQTT = &mqttHealth{
+			Connected:   st.Connected,
+			ClientID:    st.ClientID,
+			Received:    st.Received,
+			Published:   st.Published,
+			Connects:    st.Connects,
+			KnownTopics: st.KnownTopics,
+			LastError:   st.LastError,
+		}
+		if !st.Connected {
+			h.Status = "degraded"
+		}
+	}
+
+	// Отсутствие связи — не повод отвечать ошибкой: демон жив, и веб обязан
+	// открываться, чтобы связь было где починить.
 	s.writeJSON(w, http.StatusOK, h)
 }
 
-func (s *server) index(w http.ResponseWriter, r *http.Request) {
+// topicView — топик в том виде, в каком его показывает веб.
+type topicView struct {
+	Topic     string `json:"topic"`
+	Payload   string `json:"payload"`
+	Truncated bool   `json:"truncated,omitempty"`
+	Kind      string `json:"kind"`
+	Retained  bool   `json:"retained,omitempty"`
+	Count     uint64 `json:"count"`
+	LastAt    string `json:"last_at"`
+}
+
+// topics отдаёт содержимое снифера — то, что реально ходит по шине.
+func (s *server) topics(w http.ResponseWriter, _ *http.Request) {
+	if s.status.Topics == nil {
+		s.writeJSON(w, http.StatusOK, []topicView{})
+		return
+	}
+
+	seen := s.status.Topics()
+	out := make([]topicView, 0, len(seen))
+	for _, t := range seen {
+		out = append(out, topicView{
+			Topic:     t.Topic,
+			Payload:   string(t.LastPayload),
+			Truncated: t.Truncated,
+			Kind:      t.Kind,
+			Retained:  t.Retained,
+			Count:     t.Count,
+			LastAt:    t.LastAt.Format(time.RFC3339),
+		})
+	}
+	s.writeJSON(w, http.StatusOK, out)
+}
+
+func (s *server) index(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write([]byte("mqtt2mimismart " + s.version + "\n\nВеб-интерфейс в разработке.\nСостояние: /healthz\n"))
+	_, _ = w.Write([]byte("mqtt2mimismart " + s.version + "\n\n" +
+		"Веб-интерфейс в разработке.\n" +
+		"Состояние: /healthz\n" +
+		"Топики на шине: /api/topics\n"))
 }
 
 func (s *server) writeJSON(w http.ResponseWriter, code int, v any) {

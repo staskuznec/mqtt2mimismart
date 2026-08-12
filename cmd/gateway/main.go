@@ -2,10 +2,8 @@
 //
 // Держит постоянные соединения с брокером и с сервером умного дома и переводит
 // сообщения из одного в другое по правилам, которые задаются в веб-интерфейсе.
-// Конфигов на диске нет: рядом с бинарником лежит только файл базы.
-//
-// Пока это скелет — база, журнал, веб-сервер и корректное завершение. Клиенты
-// MQTT и SHS подключаются следующими этапами.
+// Конфигов на диске нет: рядом с бинарником лежит только файл базы, а всё
+// остальное — брокер, сервер умного дома, ключ, связки — вводится в вебе.
 package main
 
 import (
@@ -13,17 +11,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
+	"github.com/staskuznec/mqtt2mimismart/internal/app"
 	"github.com/staskuznec/mqtt2mimismart/internal/logging"
 	"github.com/staskuznec/mqtt2mimismart/internal/store"
-	"github.com/staskuznec/mqtt2mimismart/internal/web"
 )
 
 // version подставляется при сборке через -ldflags.
@@ -32,12 +27,8 @@ var version = "dev"
 // DefaultDBName — имя файла базы рядом с бинарником, если путь не задан.
 const DefaultDBName = "gateway.db"
 
-// Время на то, чтобы доработать начатые запросы при остановке. Больше ждать
-// незачем: systemd всё равно прибьёт процесс по своему таймауту.
-const shutdownTimeout = 10 * time.Second
-
 func main() {
-	if err := run(); err != nil {
+	if err := run(); err != nil && !errors.Is(err, context.Canceled) {
 		// Журнал к этому моменту может быть ещё не настроен, поэтому пишем
 		// прямо в stderr — иначе причина падения просто потеряется.
 		_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -88,65 +79,20 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	cfg, err := db.Config(ctx)
-	if err != nil {
-		return err
-	}
-
 	log.Info("шлюз запускается",
 		"version", version,
 		"db", db.Path(),
 		"schema", schema,
 		"addr", *addr)
-	if !cfg.Ready() {
-		log.Warn("настройки не заполнены, откройте веб-интерфейс и завершите первый запуск",
-			"url", "http://"+*addr)
-	}
 
-	return serve(ctx, log, db, *addr)
-}
-
-// serve поднимает веб-сервер и держит его до отмены контекста.
-func serve(ctx context.Context, log *slog.Logger, db *store.Store, addr string) error {
-	srv := &http.Server{
-		Addr:    addr,
-		Handler: web.Handler(log, db, version),
-
-		// Голые таймауты обязательны: без них одно зависшее соединение
-		// занимает горутину до конца жизни процесса.
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-	}
-
-	errc := make(chan error, 1)
-	go func() {
-		log.Info("веб-интерфейс слушает", "addr", addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errc <- fmt.Errorf("веб-сервер: %w", err)
-			return
-		}
-		errc <- nil
-	}()
-
-	select {
-	case err := <-errc:
+	a, err := app.New(log, db, version, *addr)
+	if err != nil {
 		return err
-	case <-ctx.Done():
-		log.Info("получен сигнал, останавливаемся")
 	}
 
-	// Свой контекст: тот, что пришёл, уже отменён сигналом, и остановка по
-	// нему завершилась бы мгновенно, оборвав запросы на середине.
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("остановка веб-сервера: %w", err)
-	}
+	err = a.Run(ctx)
 	log.Info("остановлен")
-	return nil
+	return err
 }
 
 // resolveDBPath определяет, где лежит база.
