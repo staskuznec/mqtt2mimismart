@@ -1,0 +1,44 @@
+[Unit]
+Description=Шлюз MQTT — MimiSmart
+Documentation=https://github.com/staskuznec/mqtt2mimismart
+# Брокер и сервер умного дома обычно живут на этой же машине. Требовать их
+# нельзя: шлюз обязан подниматься и без них, показывая в вебе, что связи нет.
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sh2
+Group=sh2
+
+# Настроек в командной строке ровно две: где слушать веб и где лежит база.
+# Всё остальное — брокер, сервер SHS, ключ, связки — задаётся в веб-интерфейсе.
+ExecStart=/opt/mqtt2mimismart/mqtt2mimismart \
+    --addr 0.0.0.0:8080 \
+    --db /var/lib/mqtt2mimismart/gateway.db \
+    --log-level info
+
+Restart=always
+RestartSec=5s
+
+# Создаёт /var/lib/mqtt2mimismart с нужным владельцем при первом запуске.
+StateDirectory=mqtt2mimismart
+StateDirectoryMode=0700
+
+# Журнал уходит в journald: смотреть через journalctl -u mqtt2mimismart -f
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+# Именно read-only, а не yes: logic.xml лежит в домашнем каталоге сервера
+# умного дома, и шлюзу нужно его читать. С ProtectHome=yes он его не увидит.
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target
