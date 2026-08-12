@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/staskuznec/mqtt2mimismart/internal/devtmpl"
 	"github.com/staskuznec/mqtt2mimismart/internal/link"
 )
 
@@ -367,5 +368,114 @@ func TestIncomingLinkHasNoKind(t *testing.T) {
 	}
 	if got.Extract != link.ExtractRaw {
 		t.Errorf("способ извлечения = %q, ожидался %q", got.Extract, link.ExtractRaw)
+	}
+}
+
+// Развёртывание шаблона: устройство и связки заводятся вместе, канал реле
+// разворачивается парой.
+func TestApplyTemplate(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	tmpl, err := s.Template(ctx, "shelly25-relay")
+	if err != nil {
+		t.Fatalf("Template: %v", err)
+	}
+
+	deviceID, err := s.ApplyTemplate(ctx,
+		Device{Name: "Реле прихожей", TopicPrefix: "shellies/shellyswitch25-4022D8956527"},
+		tmpl,
+		map[string]devtmpl.Addr{
+			"ch0":    {ID: 758, SubID: 4},
+			"power0": {ID: 563, SubID: 120},
+			"temp":   {ID: 542, SubID: 16},
+		})
+	if err != nil {
+		t.Fatalf("ApplyTemplate: %v", err)
+	}
+
+	links, err := s.LinksByDevice(ctx, deviceID)
+	if err != nil {
+		t.Fatalf("LinksByDevice: %v", err)
+	}
+	// Пара по каналу 0, мощность, температура — четыре связки.
+	if len(links) != 4 {
+		t.Fatalf("развернулось %d связок, ожидалось 4: %+v", len(links), links)
+	}
+
+	var paired int
+	for _, l := range links {
+		if l.DeviceID != deviceID {
+			t.Errorf("связка %q не привязана к устройству", l.Name)
+		}
+		if l.PairID != 0 {
+			paired++
+		}
+	}
+	if paired != 2 {
+		t.Errorf("в паре %d связок, ожидалось 2", paired)
+	}
+}
+
+// Удаление устройства уносит развёрнутые связки: осиротевшие правила молча
+// продолжали бы писать в элементы.
+func TestDeleteDeviceRemovesTemplateLinks(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	tmpl, _ := s.Template(ctx, "shelly25-relay")
+	deviceID, err := s.ApplyTemplate(ctx,
+		Device{Name: "Реле", TopicPrefix: "shellies/sw25-A1"}, tmpl,
+		map[string]devtmpl.Addr{"ch0": {ID: 758, SubID: 4}})
+	if err != nil {
+		t.Fatalf("ApplyTemplate: %v", err)
+	}
+
+	if err := s.DeleteDevice(ctx, deviceID); err != nil {
+		t.Fatalf("DeleteDevice: %v", err)
+	}
+	links, _ := s.Links(ctx)
+	if len(links) != 0 {
+		t.Errorf("после удаления устройства осталось %d связок", len(links))
+	}
+}
+
+// Загруженный шаблон перекрывает встроенный с тем же ключом.
+func TestUploadedTemplateOverridesBuiltin(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	body := []byte(`{"name":"Своя правка Shelly 2.5","model":"SHSW-25",
+		"roles":[{"key":"ch0","title":"Канал 0","required":true}],
+		"links":[{"name":"Состояние","direction":"in","role":"ch0",
+			"topic":"{{prefix}}/relay/0","encode":"byte","values":{"on":"1","off":"0"}}]}`)
+
+	if err := s.SaveTemplate(ctx, "shelly25-relay", body); err != nil {
+		t.Fatalf("SaveTemplate: %v", err)
+	}
+
+	got, err := s.Template(ctx, "shelly25-relay")
+	if err != nil {
+		t.Fatalf("Template: %v", err)
+	}
+	if got.Name != "Своя правка Shelly 2.5" || len(got.Links) != 1 {
+		t.Errorf("действует не загруженный шаблон: %+v", got.Name)
+	}
+
+	// После удаления снова действует встроенный.
+	if err := s.DeleteTemplate(ctx, "shelly25-relay"); err != nil {
+		t.Fatalf("DeleteTemplate: %v", err)
+	}
+	got, _ = s.Template(ctx, "shelly25-relay")
+	if got.Name == "Своя правка Shelly 2.5" {
+		t.Error("после удаления загруженного встроенный не вернулся")
+	}
+}
+
+// Битый шаблон не должен попадать в базу.
+func TestSaveTemplateValidates(t *testing.T) {
+	s := open(t)
+	if err := s.SaveTemplate(context.Background(), "плохой", []byte(`{"name":"Без связок"}`)); err == nil {
+		t.Error("шаблон без связок сохранён")
 	}
 }
