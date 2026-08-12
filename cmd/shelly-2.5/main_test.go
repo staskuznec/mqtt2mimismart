@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"Shelly_2.5/internal/command"
-	"Shelly_2.5/internal/config"
-	"Shelly_2.5/internal/reporter"
-	"Shelly_2.5/internal/shelly"
+	"github.com/staskuznec/mqtt2mimismart/internal/command"
+	"github.com/staskuznec/mqtt2mimismart/internal/config"
+	"github.com/staskuznec/mqtt2mimismart/internal/reporter"
+	"github.com/staskuznec/mqtt2mimismart/internal/shelly"
 )
 
 // statusJSON — реалистичный ответ /status от Shelly 2.5 в режиме relay:

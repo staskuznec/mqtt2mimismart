@@ -3,7 +3,7 @@ package reporter
 import (
 	"testing"
 
-	"Shelly_2.5/internal/config"
+	"github.com/staskuznec/mqtt2mimismart/internal/config"
 )
 
 // Единица в однобайтовом элементе должна уехать как байт 1, а не как

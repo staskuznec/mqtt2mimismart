@@ -23,12 +23,12 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"Shelly_2.5/internal/command"
-	"Shelly_2.5/internal/config"
-	"Shelly_2.5/internal/logger"
-	"Shelly_2.5/internal/reporter"
-	"Shelly_2.5/internal/shelly"
-	"Shelly_2.5/internal/statecache"
+	"github.com/staskuznec/mqtt2mimismart/internal/command"
+	"github.com/staskuznec/mqtt2mimismart/internal/config"
+	"github.com/staskuznec/mqtt2mimismart/internal/logger"
+	"github.com/staskuznec/mqtt2mimismart/internal/reporter"
+	"github.com/staskuznec/mqtt2mimismart/internal/shelly"
+	"github.com/staskuznec/mqtt2mimismart/internal/statecache"
 )
 
 const (

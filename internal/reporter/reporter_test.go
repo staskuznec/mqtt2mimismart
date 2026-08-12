@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"Shelly_2.5/internal/config"
+	"github.com/staskuznec/mqtt2mimismart/internal/config"
 )
 
 func TestPrepareAppliesScale(t *testing.T) {

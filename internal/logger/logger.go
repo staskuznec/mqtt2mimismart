@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"Shelly_2.5/internal/config"
+	"github.com/staskuznec/mqtt2mimismart/internal/config"
 )
 
 // Init инициализирует глобальный логгер zerolog.

@@ -11,9 +11,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
-	"Shelly_2.5/internal/config"
-	"Shelly_2.5/internal/statecache"
-	"Shelly_2.5/internal/transport/api/shClient"
+	"github.com/staskuznec/mqtt2mimismart/internal/config"
+	"github.com/staskuznec/mqtt2mimismart/internal/statecache"
+	"github.com/staskuznec/mqtt2mimismart/internal/transport/api/shClient"
 )
 
 // Пауза между пакетами и время ожидания ответов сервера подобраны так же,

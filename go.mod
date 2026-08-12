@@ -1,4 +1,4 @@
-module Shelly_2.5
+module github.com/staskuznec/mqtt2mimismart
 
 go 1.25
 
