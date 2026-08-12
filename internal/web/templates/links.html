@@ -1,9 +1,10 @@
 {{define "content"}}
 <h1>Связки</h1>
 <p class="hint">Что и куда переводит шлюз. Всего {{len .Links}}.</p>
-<p><a href="/links/new"><button type="button">Новая связка</button></a></p>
+<div class="toolbar"><a href="/links/new" class="btn">Новая связка</a></div>
 
 {{if .Links}}
+<div class="tablewrap">
 <table>
   <thead><tr>
     <th></th><th>Направление</th><th>Топик</th><th>Элемент</th>
@@ -22,12 +23,12 @@
       <td style="white-space:nowrap">
         <a href="/links/{{.ID}}">править</a>
         <form method="post" action="/links/{{.ID}}/toggle" style="display:inline">
-          <button type="submit" style="margin:0;padding:2px 8px;background:none;color:var(--accent)">
+          <button type="submit" class="link">
             {{if .Enabled}}выключить{{else}}включить{{end}}</button>
         </form>
         <form method="post" action="/links/{{.ID}}/delete" style="display:inline"
               onsubmit="return confirm('Удалить связку?')">
-          <button type="submit" style="margin:0;padding:2px 8px;background:none;color:var(--bad)">удалить</button>
+          <button type="submit" class="link danger">удалить</button>
         </form>
       </td>
     </tr>
@@ -35,6 +36,7 @@
   {{end}}
   </tbody>
 </table>
+</div>
 {{else}}
 <p class="empty">
   Связок пока нет. Заведите первую кнопкой выше или нажмите «Связать» рядом с

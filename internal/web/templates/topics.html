@@ -6,6 +6,7 @@
 </p>
 
 {{if .Topics}}
+<div class="tablewrap">
 <table>
   <thead><tr>
     <th>Топик</th><th>Последнее значение</th><th>Вид</th>
@@ -24,6 +25,7 @@
   {{end}}
   </tbody>
 </table>
+</div>
 {{else}}
 <p class="empty">
   Пока пусто. Либо шлюз не подключён к брокеру — смотрите

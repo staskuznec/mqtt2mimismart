@@ -24,12 +24,15 @@ var templateFS embed.FS
 // оформлением: html/template не умеет переопределять блок в рамках одного
 // набора, поэтому наборов столько же, сколько страниц.
 var pages = map[string]*template.Template{
-	"overview":  mustParse("overview.html"),
-	"settings":  mustParse("settings.html"),
-	"topics":    mustParse("topics.html"),
-	"links":     mustParse("links.html"),
-	"link_form": mustParse("link_form.html"),
-	"elements":  mustParse("elements.html"),
+	"overview":    mustParse("overview.html"),
+	"settings":    mustParse("settings.html"),
+	"topics":      mustParse("topics.html"),
+	"links":       mustParse("links.html"),
+	"link_form":   mustParse("link_form.html"),
+	"elements":    mustParse("elements.html"),
+	"devices":     mustParse("devices.html"),
+	"device_form": mustParse("device_form.html"),
+	"templates":   mustParse("templates.html"),
 
 	// Проба возвращается кусочком страницы, поэтому общее оформление ей
 	// не нужно — она подставляется в уже открытую форму.

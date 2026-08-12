@@ -1,75 +1,155 @@
-{{define "layout"}}<!-- Оформление намеренно скромное и без внешних файлов:
-     шлюз живёт в локальной сети, где интернета может не быть вовсе. -->
+{{define "layout"}}<!-- Ни одного внешнего файла: шлюз живёт в локальной сети,
+     где интернета может не быть вовсе, а шрифт с чужого сервера превратил бы
+     страницу в белый экран. Тема берётся системная. -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}} — mqtt2mimismart</title>
 <style>
   :root {
-    --bg: #fff; --fg: #1a1a1a; --muted: #666; --line: #ddd;
-    --ok: #1a7f37; --warn: #9a6700; --bad: #b3261e; --accent: #0b5ed7;
-    --card: #f6f8fa;
+    --bg: #f7f8fa; --panel: #fff; --fg: #16181d; --muted: #6b7280;
+    --line: #e3e6ea; --line-soft: #eef0f3;
+    --ok: #17803d; --ok-bg: #e8f6ed;
+    --warn: #96690a; --warn-bg: #fdf4e3;
+    --bad: #b42318; --bad-bg: #fdeceb;
+    --accent: #1f5fd0; --accent-fg: #fff; --accent-soft: #eaf1fd;
+    --radius: 10px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #14161a; --fg: #e6e6e6; --muted: #9aa0a6; --line: #2c3038;
-      --ok: #4ac26b; --warn: #d9a400; --bad: #ff6b60; --accent: #6ea8fe;
-      --card: #1b1e24;
+      --bg: #101216; --panel: #171a20; --fg: #e7e9ec; --muted: #949aa4;
+      --line: #272b33; --line-soft: #1e222a;
+      --ok: #5bc27c; --ok-bg: #142218;
+      --warn: #e0ad3c; --warn-bg: #241d10;
+      --bad: #ff8078; --bad-bg: #2a1615;
+      --accent: #6ea8fe; --accent-fg: #0d1117; --accent-soft: #172232;
     }
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--fg);
-    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  header { border-bottom: 1px solid var(--line); padding: 0 16px; }
-  nav { display: flex; gap: 4px; max-width: 1100px; margin: 0 auto; flex-wrap: wrap; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  header {
+    background: var(--panel); border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 10;
+  }
+  nav { display: flex; gap: 2px; max-width: 1120px; margin: 0 auto; padding: 0 20px; flex-wrap: wrap; }
   nav a {
-    padding: 12px 14px; color: var(--muted); text-decoration: none;
-    border-bottom: 2px solid transparent;
+    padding: 14px 13px 11px; color: var(--muted); font-weight: 500;
+    border-bottom: 3px solid transparent; white-space: nowrap;
   }
-  nav a:hover { color: var(--fg); }
+  nav a:hover { color: var(--fg); text-decoration: none; }
   nav a.active { color: var(--fg); border-bottom-color: var(--accent); }
-  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
-  h1 { font-size: 21px; margin: 0 0 4px; }
-  h2 { font-size: 16px; margin: 28px 0 10px; }
-  p.hint { color: var(--muted); margin: 0 0 20px; }
+
+  main { max-width: 1120px; margin: 0 auto; padding: 26px 20px 80px; }
+  h1 { font-size: 24px; letter-spacing: -0.01em; margin: 0 0 6px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;
+       color: var(--muted); margin: 30px 0 12px; }
+  p.hint { color: var(--muted); margin: 0 0 22px; max-width: 72ch; }
+
+  /* Панели */
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+  }
+  .card h2 { margin-top: 0; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+
+  /* Таблицы */
+  .tablewrap {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); overflow-x: auto;
+  }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
-  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
-  th { color: var(--muted); font-weight: 600; }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
-  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); }
+  thead th {
+    color: var(--muted); font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.04em; background: var(--bg);
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--line-soft); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .card table th, .card table td { padding: 6px 0; border: 0; background: none; }
+  .card table th { text-transform: none; font-size: 13px; letter-spacing: 0; font-weight: 400; }
+
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+
+  /* Состояния */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
+    border-radius: 999px; font-size: 13px; font-weight: 500;
+  }
+  .pill.ok   { background: var(--ok-bg);   color: var(--ok); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.bad  { background: var(--bad-bg);  color: var(--bad); }
+  .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
   .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); }
-  .msg { padding: 11px 14px; border-radius: 8px; margin-bottom: 18px; border: 1px solid; }
-  .msg.ok { border-color: var(--ok); color: var(--ok); }
-  .msg.bad { border-color: var(--bad); color: var(--bad); }
-  label { display: block; margin: 14px 0 4px; font-weight: 600; font-size: 14px; }
-  label span { font-weight: 400; color: var(--muted); }
-  select, textarea {
-    padding: 8px 10px; font: inherit; max-width: 460px; width: 100%;
-    background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
+
+  .msg { padding: 13px 16px; border-radius: var(--radius); margin-bottom: 20px; border: 1px solid transparent; }
+  .msg.ok  { background: var(--ok-bg);  border-color: var(--ok);  color: var(--ok); }
+  .msg.bad { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }
+
+  /* Формы */
+  form.stack { max-width: 660px; }
+  label { display: block; margin: 18px 0 0; font-weight: 600; font-size: 14px; }
+  label span { display: block; font-weight: 400; color: var(--muted); font-size: 13px; margin: 2px 0 6px; }
+  label > input, label > select, label > textarea { margin-top: 6px; }
+  label span + input, label span + select, label span + textarea { margin-top: 0; }
+  input[type=text], input[type=password], input[type=file], select, textarea {
+    width: 100%; padding: 9px 11px; font: inherit; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
   }
-  input[type=checkbox] { margin-right: 6px; }
-  input[type=text], input[type=password] {
-    width: 100%; max-width: 460px; padding: 8px 10px; font: inherit;
-    background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
+  input:focus, select:focus, textarea:focus {
+    outline: 2px solid var(--accent-soft); border-color: var(--accent);
   }
-  button {
-    margin-top: 20px; padding: 9px 18px; font: inherit; cursor: pointer;
-    background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+  textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  label.check { display: flex; align-items: flex-start; gap: 9px; font-weight: 500; }
+  label.check input { margin-top: 3px; width: auto; }
+  label.check span { margin: 0; display: inline; }
+
+  fieldset {
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 4px 20px 22px; margin: 26px 0 0; background: var(--panel);
   }
-  .empty { color: var(--muted); padding: 24px 0; }
+  legend { padding: 0 8px; font-weight: 600; font-size: 12px;
+           text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+
+  button, .btn {
+    display: inline-block; margin-top: 22px; padding: 10px 20px; font: inherit;
+    font-weight: 500; cursor: pointer; border: 1px solid transparent; border-radius: 8px;
+    background: var(--accent); color: var(--accent-fg);
+  }
+  button:hover, .btn:hover { filter: brightness(1.08); text-decoration: none; }
+  button.ghost, .btn.ghost { background: var(--panel); color: var(--fg); border-color: var(--line); }
+  button.link {
+    margin: 0; padding: 3px 6px; background: none; border: 0;
+    color: var(--accent); font-weight: 400;
+  }
+  button.link.danger { color: var(--bad); }
+  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
+  .toolbar button, .toolbar .btn { margin-top: 0; }
+
+  .empty {
+    color: var(--muted); padding: 40px 20px; text-align: center;
+    background: var(--panel); border: 1px dashed var(--line); border-radius: var(--radius);
+  }
 </style>
 
 <header>
   <nav>
-    <a href="/" {{if eq .Nav "overview"}}class="active"{{end}}>Обзор</a>
-    <a href="/topics" {{if eq .Nav "topics"}}class="active"{{end}}>Топики</a>
-    <a href="/links" {{if eq .Nav "links"}}class="active"{{end}}>Связки</a>
-    <a href="/elements" {{if eq .Nav "elements"}}class="active"{{end}}>Элементы</a>
-    <a href="/settings" {{if eq .Nav "settings"}}class="active"{{end}}>Настройки</a>
+    <a href="/"          {{if eq .Nav "overview"}}class="active"{{end}}>Обзор</a>
+    <a href="/topics"    {{if eq .Nav "topics"}}class="active"{{end}}>Топики</a>
+    <a href="/devices"   {{if eq .Nav "devices"}}class="active"{{end}}>Устройства</a>
+    <a href="/links"     {{if eq .Nav "links"}}class="active"{{end}}>Связки</a>
+    <a href="/elements"  {{if eq .Nav "elements"}}class="active"{{end}}>Элементы</a>
+    <a href="/templates" {{if eq .Nav "templates"}}class="active"{{end}}>Шаблоны</a>
+    <a href="/settings"  {{if eq .Nav "settings"}}class="active"{{end}}>Настройки</a>
   </nav>
 </header>
 <main>{{template "content" .}}</main>

@@ -56,6 +56,16 @@ func Handler(log *slog.Logger, db *store.Store, version string, status Status) h
 	mux.HandleFunc("POST /links/preview", s.previewLink)
 	mux.HandleFunc("GET /elements", s.pageElements)
 
+	mux.HandleFunc("GET /devices", s.pageDevices)
+	mux.HandleFunc("GET /devices/new", s.pageDeviceForm)
+	mux.HandleFunc("POST /devices/apply", s.applyTemplate)
+	mux.HandleFunc("POST /devices/{id}/delete", s.deleteDevice)
+
+	mux.HandleFunc("GET /templates", s.pageTemplates)
+	mux.HandleFunc("GET /api/templates/{key}", s.showTemplate)
+	mux.HandleFunc("POST /templates/upload", s.uploadTemplate)
+	mux.HandleFunc("POST /templates/{key}/delete", s.deleteTemplate)
+
 	// Машинный интерфейс: на нём же потом стоит большая панель.
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /api/topics", s.topics)

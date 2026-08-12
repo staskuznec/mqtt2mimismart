@@ -1,0 +1,51 @@
+{{define "content"}}
+<h1>Шаблоны устройств</h1>
+<p class="hint">
+  Шаблон — это данные, а не код: новая модель добавляется файлом, без пересборки.
+  Встроенные правке не подлежат, но загруженный с тем же ключом их перекрывает —
+  так модель правится под свою прошивку, а обновление шлюза не ломает
+  развёрнутое.
+</p>
+
+{{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
+{{if .Saved}}<div class="msg ok">Шаблон «{{.Saved}}» сохранён.</div>{{end}}
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Ключ</th><th>Название</th><th>Модель</th>
+    <th style="text-align:right">Ролей</th><th style="text-align:right">Связок</th><th></th></tr></thead>
+  <tbody>
+  {{range .Templates}}
+    <tr>
+      <td class="mono">{{.Key}}</td>
+      <td>{{.Name}}{{if not .Builtin}} <span class="hint">· загруженный</span>{{end}}</td>
+      <td class="hint">{{.Model}}</td>
+      <td class="num">{{len .Roles}}</td>
+      <td class="num">{{len .Links}}</td>
+      <td style="white-space:nowrap">
+        <a href="/api/templates/{{.Key}}">открыть</a>
+        {{if not .Builtin}}
+          <form method="post" action="/templates/{{.Key}}/delete" style="display:inline"
+                onsubmit="return confirm('Удалить загруженный шаблон? Встроенный с этим ключом снова станет действующим.')">
+            <button type="submit" class="link danger">удалить</button>
+          </form>
+        {{end}}
+      </td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<h2>Загрузить шаблон</h2>
+<form method="post" action="/templates/upload" enctype="multipart/form-data" class="stack">
+  <label>Ключ <span>— по нему шаблон опознаётся; совпал со встроенным — перекроет его</span>
+    <input type="text" name="key" placeholder="shelly25-relay"></label>
+  <label>Файл <span>— или вставьте JSON ниже</span>
+    <input type="file" name="file" accept=".json,application/json"></label>
+  <label>JSON
+    <textarea name="body" rows="12" style="width:100%;max-width:760px;font-family:ui-monospace,monospace"
+              placeholder='{&#10;  "name": "Моя модель",&#10;  "model": "SHSW-25",&#10;  "roles": [...],&#10;  "links": [...]&#10;}'></textarea></label>
+  <button type="submit">Загрузить</button>
+</form>
+{{end}}

@@ -11,10 +11,9 @@
 
 <div class="grid">
   <div class="card">
-    <h2 style="margin-top:0">MQTT-брокер</h2>
+    <h2>MQTT-брокер</h2>
     {{if .MQTT}}
-      <p><span class="dot {{if .MQTT.Connected}}ok{{else}}bad{{end}}"></span>
-         {{if .MQTT.Connected}}на связи{{else}}связи нет{{end}}</p>
+      <p><span class="pill {{if .MQTT.Connected}}ok{{else}}bad{{end}}">{{if .MQTT.Connected}}на связи{{else}}связи нет{{end}}</span></p>
       <table>
         <tr><th>Клиент</th><td class="mono">{{.MQTT.ClientID}}</td></tr>
         <tr><th>Принято</th><td class="num">{{.MQTT.Received}}</td></tr>
@@ -26,9 +25,9 @@
   </div>
 
   <div class="card">
-    <h2 style="margin-top:0">Умный дом</h2>
+    <h2>Умный дом</h2>
     {{if .SHS}}
-      <p><span class="dot {{.SHSDot}}"></span>{{.SHSPhase}}</p>
+      <p><span class="pill {{.SHSDot}}">{{.SHSPhase}}</span></p>
       <table>
         <tr><th>Идентификатор</th><td class="num">{{.SHS.ClientID}}</td></tr>
         <tr><th>Событий</th><td class="num">{{.SHS.Events}}</td></tr>
@@ -40,7 +39,7 @@
   </div>
 
   <div class="card">
-    <h2 style="margin-top:0">Связки</h2>
+    <h2>Связки</h2>
     <table>
       <tr><th>Всего</th><td class="num">{{.Links.Total}}</td></tr>
       <tr><th>Включено</th><td class="num">{{.Links.Enabled}}</td></tr>

@@ -1,0 +1,64 @@
+{{define "content"}}
+<h1>Новое устройство</h1>
+{{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
+
+<form method="get" action="/devices/new">
+  <label>Шаблон
+    <select name="template" onchange="this.form.submit()">
+      <option value="">— выберите модель —</option>
+      {{range .Templates}}
+        <option value="{{.Key}}" {{if eq .Key $.Selected.Key}}selected{{end}}>
+          {{.Name}}{{if not .Builtin}} · загруженный{{end}}</option>
+      {{end}}
+    </select></label>
+  <input type="hidden" name="prefix" value="{{.Prefix}}">
+</form>
+
+{{if .HasChoice}}
+  {{with .Selected.Note}}<p class="hint" style="max-width:640px">{{.}}</p>{{end}}
+
+  <form method="post" action="/devices/apply" class="stack">
+    <input type="hidden" name="template" value="{{.Selected.Key}}">
+
+    <label>Название <span>— как называть устройство в списке</span>
+      <input type="text" name="name" value="{{.Name}}"></label>
+
+    <label>Префикс топиков
+      <input type="text" name="prefix" value="{{.Prefix}}" required list="prefixes"
+             placeholder="shellies/shellyswitch25-4022D8956527"></label>
+    <datalist id="prefixes">
+      {{range .Prefixes}}<option value="{{.Prefix}}">{{end}}
+    </datalist>
+    {{if .Prefixes}}
+      <p class="hint">Видно на шине:
+        {{range .Prefixes}}
+          <a href="#" onclick="document.querySelector('input[name=prefix]').value='{{.Prefix}}';return false"
+             class="mono">{{.Prefix}}</a>{{if .Known}} <span class="hint">(уже заведено)</span>{{end}} ·
+        {{end}}
+      </p>
+    {{end}}
+
+    <fieldset><legend>Элементы умного дома</legend>
+    <p class="hint">
+      Роль без выбранного элемента пропускается: не нужны показания — не назначайте их,
+      и связок под них не появится.
+    </p>
+
+    {{range .Selected.Roles}}
+      <label>{{.Title}}{{if .Required}} <span style="color:var(--bad)">— обязательно</span>{{end}}
+        {{with .Hint}}<span>— {{.}}</span>{{end}}
+        <select name="role_{{.Key}}" {{if .Required}}required{{end}}>
+          <option value="">— не нужно —</option>
+          {{range $.Elements}}<option value="{{.Addr}}">{{.Label}} · {{.Addr}}</option>{{end}}
+        </select></label>
+    {{end}}
+
+    {{if not .Elements}}
+      <p class="msg bad">Список элементов пуст: logic.xml приезжает при подключении к
+         умному дому. Проверьте связь на странице <a href="/">Обзор</a>.</p>
+    {{end}}
+
+    </fieldset><button type="submit">Развернуть</button>
+  </form>
+{{end}}
+{{end}}

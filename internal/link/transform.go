@@ -79,6 +79,12 @@ func (l Link) extract(payload []byte) (string, error) {
 func (l Link) number(value string) (float64, error) {
 	s := strings.TrimSpace(value)
 
+	// Пустота — это не «неизвестное значение», а отсутствие данных, и совет
+	// про таблицу значений тут только сбивает с толку.
+	if s == "" {
+		return 0, fmt.Errorf("сообщение пустое: нечего преобразовывать")
+	}
+
 	v, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		// Логические значения приходят и словами: устройства пишут "true",
@@ -89,7 +95,9 @@ func (l Link) number(value string) (float64, error) {
 		case "false", "off", "no":
 			v = 0
 		default:
-			return 0, fmt.Errorf("значение %q не число (добавьте его в таблицу значений)", value)
+			return 0, fmt.Errorf(
+				"устройство прислало %q, а элементу нужно число. "+
+					"Добавьте в поле «Таблица значений на вход» строку: %s = 1", value, s)
 		}
 	}
 

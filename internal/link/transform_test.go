@@ -1,6 +1,7 @@
 package link
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -388,5 +389,36 @@ func TestValidateUnknownKind(t *testing.T) {
 	l := Link{Direction: Out, Kind: "нечто", Topic: "a/b", Decode: DecodeText}
 	if err := l.Validate(); err == nil {
 		t.Error("неизвестное назначение связки принято")
+	}
+}
+
+// Пустое сообщение — это отсутствие данных, а не неизвестное значение.
+// Совет про таблицу значений тут только сбивает с толку.
+func TestEmptyPayloadError(t *testing.T) {
+	l := Link{Encode: EncodeByte}
+
+	_, err := l.ToWire(nil)
+	if err == nil {
+		t.Fatal("пустая нагрузка принята")
+	}
+	if strings.Contains(err.Error(), "таблиц") {
+		t.Errorf("ошибка советует таблицу значений для пустоты: %v", err)
+	}
+}
+
+// Ошибка про неизвестное значение обязана называть поле и показывать готовую
+// строку: иначе непонятно, куда именно её вписывать.
+func TestUnknownValueErrorNamesTheField(t *testing.T) {
+	l := Link{Encode: EncodeByte}
+
+	_, err := l.ToWire([]byte("overpower"))
+	if err == nil {
+		t.Fatal("неизвестное значение принято")
+	}
+	if !strings.Contains(err.Error(), "Таблица значений на вход") {
+		t.Errorf("ошибка не называет поле: %v", err)
+	}
+	if !strings.Contains(err.Error(), "overpower = 1") {
+		t.Errorf("ошибка не показывает готовую строку: %v", err)
 	}
 }

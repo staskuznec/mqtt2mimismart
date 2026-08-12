@@ -10,8 +10,8 @@
 {{end}}
 {{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
 
-<form method="post" action="/settings">
-  <h2>MQTT-брокер</h2>
+<form method="post" action="/settings" class="stack"><div>
+  </div><fieldset><legend>MQTT-брокер</legend>
   <label>Адрес <span>— host:port, например 127.0.0.1:1883</span>
     <input type="text" name="mqtt_addr" value="{{.Config.MQTTAddr}}" required></label>
   <label>Пользователь <span>— пусто, если брокер без учётных записей</span>
@@ -21,7 +21,7 @@
   <label>Идентификатор клиента <span>— пусто: соберётся из имени хоста</span>
     <input type="text" name="mqtt_client_id" value="{{.Config.MQTTClientID}}"></label>
 
-  <h2>Сервер умного дома</h2>
+  </fieldset><fieldset><legend>Сервер умного дома</legend>
   <label>Адрес <span>— host:port сервера статистики, например 127.0.0.1:9001</span>
     <input type="text" name="shs_addr" value="{{.Config.SHSAddr}}" required></label>
   <label>Ключ <span>— ровно 16, 24 или 32 байта: это требование AES</span>
@@ -29,10 +29,10 @@
   <label>mac-id <span>— пусто: сгенерируется случайный</span>
     <input type="text" name="shs_mac" value="{{.Config.SHSMac}}"></label>
 
-  <h2>Логика умного дома</h2>
+  </fieldset><fieldset><legend>Логика умного дома</legend>
   <label>Путь к logic.xml <span>— из него берутся имена и адреса элементов</span>
     <input type="text" name="logic_path" value="{{.Config.LogicPath}}"></label>
 
-  <button type="submit">Сохранить</button>
+  </fieldset><button type="submit">Сохранить</button>
 </form>
 {{end}}
