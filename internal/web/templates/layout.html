@@ -1,0 +1,70 @@
+{{define "layout"}}<!-- Оформление намеренно скромное и без внешних файлов:
+     шлюз живёт в локальной сети, где интернета может не быть вовсе. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} — mqtt2mimismart</title>
+<style>
+  :root {
+    --bg: #fff; --fg: #1a1a1a; --muted: #666; --line: #ddd;
+    --ok: #1a7f37; --warn: #9a6700; --bad: #b3261e; --accent: #0b5ed7;
+    --card: #f6f8fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --fg: #e6e6e6; --muted: #9aa0a6; --line: #2c3038;
+      --ok: #4ac26b; --warn: #d9a400; --bad: #ff6b60; --accent: #6ea8fe;
+      --card: #1b1e24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header { border-bottom: 1px solid var(--line); padding: 0 16px; }
+  nav { display: flex; gap: 4px; max-width: 1100px; margin: 0 auto; flex-wrap: wrap; }
+  nav a {
+    padding: 12px 14px; color: var(--muted); text-decoration: none;
+    border-bottom: 2px solid transparent;
+  }
+  nav a:hover { color: var(--fg); }
+  nav a.active { color: var(--fg); border-bottom-color: var(--accent); }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 21px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 28px 0 10px; }
+  p.hint { color: var(--muted); margin: 0 0 20px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); }
+  .msg { padding: 11px 14px; border-radius: 8px; margin-bottom: 18px; border: 1px solid; }
+  .msg.ok { border-color: var(--ok); color: var(--ok); }
+  .msg.bad { border-color: var(--bad); color: var(--bad); }
+  label { display: block; margin: 14px 0 4px; font-weight: 600; font-size: 14px; }
+  label span { font-weight: 400; color: var(--muted); }
+  input[type=text], input[type=password] {
+    width: 100%; max-width: 460px; padding: 8px 10px; font: inherit;
+    background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
+  }
+  button {
+    margin-top: 20px; padding: 9px 18px; font: inherit; cursor: pointer;
+    background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+  }
+  .empty { color: var(--muted); padding: 24px 0; }
+</style>
+
+<header>
+  <nav>
+    <a href="/" {{if eq .Nav "overview"}}class="active"{{end}}>Обзор</a>
+    <a href="/topics" {{if eq .Nav "topics"}}class="active"{{end}}>Топики</a>
+    <a href="/links" {{if eq .Nav "links"}}class="active"{{end}}>Связки</a>
+    <a href="/settings" {{if eq .Nav "settings"}}class="active"{{end}}>Настройки</a>
+  </nav>
+</header>
+<main>{{template "content" .}}</main>
+{{end}}

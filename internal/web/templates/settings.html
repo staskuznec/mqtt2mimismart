@@ -1,0 +1,38 @@
+{{define "content"}}
+<h1>Настройки</h1>
+<p class="hint">Конфигов на диске нет — всё вводится здесь и лежит в базе рядом с бинарником.</p>
+
+{{if .Saved}}
+  <div class="msg ok">
+    Сохранено. Соединения поднимаются при старте, поэтому изменения применятся
+    после перезапуска: <code>systemctl restart mqtt2mimismart</code>
+  </div>
+{{end}}
+{{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
+
+<form method="post" action="/settings">
+  <h2>MQTT-брокер</h2>
+  <label>Адрес <span>— host:port, например 127.0.0.1:1883</span>
+    <input type="text" name="mqtt_addr" value="{{.Config.MQTTAddr}}" required></label>
+  <label>Пользователь <span>— пусто, если брокер без учётных записей</span>
+    <input type="text" name="mqtt_user" value="{{.Config.MQTTUser}}" autocomplete="off"></label>
+  <label>Пароль
+    <input type="password" name="mqtt_password" value="{{.Config.MQTTPassword}}" autocomplete="new-password"></label>
+  <label>Идентификатор клиента <span>— пусто: соберётся из имени хоста</span>
+    <input type="text" name="mqtt_client_id" value="{{.Config.MQTTClientID}}"></label>
+
+  <h2>Сервер умного дома</h2>
+  <label>Адрес <span>— host:port сервера статистики, например 127.0.0.1:9001</span>
+    <input type="text" name="shs_addr" value="{{.Config.SHSAddr}}" required></label>
+  <label>Ключ <span>— ровно 16, 24 или 32 байта: это требование AES</span>
+    <input type="text" name="shs_key" value="{{.Config.SHSKey}}" autocomplete="off" required></label>
+  <label>mac-id <span>— пусто: сгенерируется случайный</span>
+    <input type="text" name="shs_mac" value="{{.Config.SHSMac}}"></label>
+
+  <h2>Логика умного дома</h2>
+  <label>Путь к logic.xml <span>— из него берутся имена и адреса элементов</span>
+    <input type="text" name="logic_path" value="{{.Config.LogicPath}}"></label>
+
+  <button type="submit">Сохранить</button>
+</form>
+{{end}}

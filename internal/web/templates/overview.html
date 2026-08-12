@@ -1,0 +1,54 @@
+{{define "content"}}
+<h1>Обзор</h1>
+<p class="hint">Версия {{.Version}}, схема базы {{.Schema}}, {{.DBPath}}</p>
+
+{{if not .Configured}}
+  <div class="msg bad">
+    Настройки не заполнены. Откройте <a href="/settings">Настройки</a> и укажите
+    брокер и сервер умного дома — без них шлюзу некуда подключаться.
+  </div>
+{{end}}
+
+<div class="grid">
+  <div class="card">
+    <h2 style="margin-top:0">MQTT-брокер</h2>
+    {{if .MQTT}}
+      <p><span class="dot {{if .MQTT.Connected}}ok{{else}}bad{{end}}"></span>
+         {{if .MQTT.Connected}}на связи{{else}}связи нет{{end}}</p>
+      <table>
+        <tr><th>Клиент</th><td class="mono">{{.MQTT.ClientID}}</td></tr>
+        <tr><th>Принято</th><td class="num">{{.MQTT.Received}}</td></tr>
+        <tr><th>Опубликовано</th><td class="num">{{.MQTT.Published}}</td></tr>
+        <tr><th>Топиков на шине</th><td class="num">{{.MQTT.KnownTopics}}</td></tr>
+      </table>
+      {{if .MQTT.LastError}}<p class="hint">{{.MQTT.LastError}}</p>{{end}}
+    {{else}}<p class="empty">не настроен</p>{{end}}
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Умный дом</h2>
+    {{if .SHS}}
+      <p><span class="dot {{.SHSDot}}"></span>{{.SHSPhase}}</p>
+      <table>
+        <tr><th>Идентификатор</th><td class="num">{{.SHS.ClientID}}</td></tr>
+        <tr><th>Событий</th><td class="num">{{.SHS.Events}}</td></tr>
+        <tr><th>Отправлено</th><td class="num">{{.SHS.Sent}}</td></tr>
+        <tr><th>logic.xml</th><td class="num">{{.SHS.LogicBytes}} Б</td></tr>
+      </table>
+      {{if .SHS.LastError}}<p class="hint">{{.SHS.LastError}}</p>{{end}}
+    {{else}}<p class="empty">не настроен</p>{{end}}
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Связки</h2>
+    <table>
+      <tr><th>Всего</th><td class="num">{{.Links.Total}}</td></tr>
+      <tr><th>Включено</th><td class="num">{{.Links.Enabled}}</td></tr>
+      <tr><th>Доставлено</th><td class="num">{{.Links.Delivered}}</td></tr>
+      <tr><th>Отсеяно повторов</th><td class="num">{{.Links.Skipped}}</td></tr>
+      <tr><th>Признано эхом</th><td class="num">{{.Links.Echoes}}</td></tr>
+      <tr><th>Ошибок</th><td class="num">{{.Links.Errors}}</td></tr>
+    </table>
+  </div>
+</div>
+{{end}}

@@ -35,9 +35,17 @@ func Handler(log *slog.Logger, db *store.Store, version string, status Status) h
 	s := &server{log: log, db: db, version: version, status: status, started: time.Now()}
 
 	mux := http.NewServeMux()
+
+	// Страницы.
+	mux.HandleFunc("GET /{$}", s.pageOverview)
+	mux.HandleFunc("GET /settings", s.pageSettings)
+	mux.HandleFunc("POST /settings", s.saveSettings)
+	mux.HandleFunc("GET /topics", s.pageTopics)
+	mux.HandleFunc("GET /links", s.pageLinks)
+
+	// Машинный интерфейс: на нём же потом стоит большая панель.
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /api/topics", s.topics)
-	mux.HandleFunc("GET /{$}", s.index)
 
 	return s.logRequests(mux)
 }
@@ -195,14 +203,6 @@ func (s *server) topics(w http.ResponseWriter, _ *http.Request) {
 		})
 	}
 	s.writeJSON(w, http.StatusOK, out)
-}
-
-func (s *server) index(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write([]byte("mqtt2mimismart " + s.version + "\n\n" +
-		"Веб-интерфейс в разработке.\n" +
-		"Состояние: /healthz\n" +
-		"Топики на шине: /api/topics\n"))
 }
 
 func (s *server) writeJSON(w http.ResponseWriter, code int, v any) {

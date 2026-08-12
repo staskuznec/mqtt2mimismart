@@ -1,0 +1,32 @@
+{{define "content"}}
+<h1>Связки</h1>
+<p class="hint">Что и куда переводит шлюз. Всего {{len .Links}}.</p>
+
+{{if .Links}}
+<table>
+  <thead><tr>
+    <th></th><th>Направление</th><th>Топик</th><th>Элемент</th>
+    <th>Форма</th><th>Последнее</th><th style="text-align:right">Ошибок</th>
+  </tr></thead>
+  <tbody>
+  {{range .Links}}
+    <tr>
+      <td><span class="dot {{if .Enabled}}ok{{else}}warn{{end}}"></span></td>
+      <td>{{.Arrow}}</td>
+      <td class="mono">{{.Topic}}</td>
+      <td class="mono">{{.Addr}}{{if .Name}} <span class="hint">{{.Name}}</span>{{end}}</td>
+      <td>{{.Form}}</td>
+      <td class="mono">{{.LastValue}}</td>
+      <td class="num">{{.Errors}}</td>
+    </tr>
+    {{if .LastError}}<tr><td></td><td colspan="6" class="hint">{{.LastError}}</td></tr>{{end}}
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="empty">
+  Связок пока нет. Редактор появится следующим шагом; до тех пор их можно
+  завести через API: <code>POST /api/links</code>
+</p>
+{{end}}
+{{end}}

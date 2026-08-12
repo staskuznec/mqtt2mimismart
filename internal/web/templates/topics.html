@@ -1,0 +1,32 @@
+{{define "content"}}
+<h1>Топики</h1>
+<p class="hint">
+  Всё, что реально ходит по шине. Страница обновляется каждые три секунды.
+  Известно топиков: {{len .Topics}}{{if .Overflow}}, не запомнено ещё {{.Overflow}} — предел снифера{{end}}
+</p>
+
+{{if .Topics}}
+<table>
+  <thead><tr>
+    <th>Топик</th><th>Последнее значение</th><th>Вид</th>
+    <th style="text-align:right">Сообщений</th><th>Когда</th>
+  </tr></thead>
+  <tbody>
+  {{range .Topics}}
+    <tr>
+      <td class="mono">{{.Topic}}</td>
+      <td class="mono">{{.Payload}}{{if .Truncated}}…{{end}}</td>
+      <td>{{.Kind}}{{if .Retained}} · retain{{end}}</td>
+      <td class="num">{{.Count}}</td>
+      <td class="hint">{{.Ago}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="empty">
+  Пока пусто. Либо шлюз не подключён к брокеру — смотрите
+  <a href="/">Обзор</a>, — либо по шине никто ничего не публикует.
+</p>
+{{end}}
+{{end}}
