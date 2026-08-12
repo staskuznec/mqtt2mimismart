@@ -63,11 +63,16 @@ type Engine struct {
 	sh  Sender
 	mq  Publisher
 
-	mu    sync.RWMutex
-	in    []Link
-	out   map[string][]Link
-	last  map[int64]string // последнее отправленное значение связки
-	echo  map[string]echoEntry
+	mu   sync.RWMutex
+	in   []Link
+	out  map[string][]Link
+	echo map[string]echoEntry
+
+	// Последнее доставленное значение по связкам, отдельно на каждое
+	// направление: в умный дом уходят байты, на шину — текст команды.
+	last    map[int64]string
+	lastOut map[int64]string
+
 	stats map[int64]*Stats
 }
 
@@ -81,13 +86,14 @@ type echoEntry struct {
 // они меняются в вебе и перечитываются без перезапуска демона.
 func NewEngine(sh Sender, mq Publisher, log *slog.Logger) *Engine {
 	return &Engine{
-		log:   log,
-		sh:    sh,
-		mq:    mq,
-		out:   make(map[string][]Link),
-		last:  make(map[int64]string),
-		echo:  make(map[string]echoEntry),
-		stats: make(map[int64]*Stats),
+		log:     log,
+		sh:      sh,
+		mq:      mq,
+		out:     make(map[string][]Link),
+		last:    make(map[int64]string),
+		lastOut: make(map[int64]string),
+		echo:    make(map[string]echoEntry),
+		stats:   make(map[int64]*Stats),
 	}
 }
 
@@ -124,6 +130,11 @@ func (e *Engine) SetLinks(links []Link) {
 	for id := range e.last {
 		if _, ok := alive[id]; !ok {
 			delete(e.last, id)
+		}
+	}
+	for id := range e.lastOut {
+		if _, ok := alive[id]; !ok {
+			delete(e.lastOut, id)
 		}
 	}
 }
@@ -253,16 +264,37 @@ func (e *Engine) OnEvent(_ context.Context, ev Event) {
 func (e *Engine) applyOut(l Link, ev Event) {
 	e.count(l.ID, func(s *Stats) { s.Matched++ })
 
-	payload, err := l.ToPayload(ev.Payload)
+	value, err := l.Value(ev.Payload)
 	if err != nil {
 		e.fail(l, err, "чтение значения элемента")
 		return
+	}
+	payload := l.MapValue(value)
+
+	// Состояния элементов приезжают снова и снова — в каждом ответе на запрос
+	// состояний. Без отсева повторов шлюз слал бы команду по каждой лампе на
+	// каждом опросе, то есть несколько раз в минуту без всякой причины.
+	//
+	// Нажатие — другое дело: нажали дважды, значит переключить надо дважды,
+	// поэтому мгновенные действия проходят всегда.
+	if l.OnlyChanged && !Momentary(value) {
+		e.mu.RLock()
+		same := e.lastOut[l.ID] == payload
+		e.mu.RUnlock()
+		if same {
+			e.count(l.ID, func(s *Stats) { s.Skipped++ })
+			return
+		}
 	}
 
 	if err := e.mq.Publish(l.Topic, []byte(payload), l.QoS, l.Retain); err != nil {
 		e.fail(l, err, "публикация на шину")
 		return
 	}
+
+	e.mu.Lock()
+	e.lastOut[l.ID] = payload
+	e.mu.Unlock()
 
 	e.count(l.ID, func(s *Stats) {
 		s.Delivered++

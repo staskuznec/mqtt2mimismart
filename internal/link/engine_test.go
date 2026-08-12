@@ -343,3 +343,53 @@ func TestSetLinksForgetsRemovedLinks(t *testing.T) {
 		t.Errorf("в кэше осталось %d значений удалённых связок", remembered)
 	}
 }
+
+// Состояния приезжают в каждом ответе на запрос состояний. Без отсева шлюз
+// слал бы команду по каждой лампе на каждом опросе — несколько раз в минуту
+// без всякой причины.
+func TestOutSkipsRepeatedStates(t *testing.T) {
+	e, _, mq := newTestEngine()
+	e.SetLinks([]Link{{
+		ID: 2, Enabled: true, Direction: Out, OnlyChanged: true,
+		Topic: "shellies/a/relay/0/command", Decode: DecodeLamp,
+		Values:   map[string]string{StateOn: "on", StateOff: "off"},
+		TargetID: 563, TargetSubID: 57,
+	}})
+
+	ctx := context.Background()
+	e.OnEvent(ctx, Event{ID: 563, SubID: 57, Payload: []byte{1}}) // включено
+	e.OnEvent(ctx, Event{ID: 563, SubID: 57, Payload: []byte{1}}) // тот же снимок
+	e.OnEvent(ctx, Event{ID: 563, SubID: 57, Payload: []byte{8}}) // включено, но от выключателя
+	e.OnEvent(ctx, Event{ID: 563, SubID: 57, Payload: []byte{0}}) // выключили
+
+	msgs := mq.all()
+	if len(msgs) != 2 {
+		t.Fatalf("опубликовано %d сообщений, ожидалось 2 (on и off)", len(msgs))
+	}
+	if msgs[0].payload != "on" || msgs[1].payload != "off" {
+		t.Errorf("опубликовано %+v", msgs)
+	}
+	if st := e.Stats()[2]; st.Skipped != 2 {
+		t.Errorf("отсеяно %d повторов, ожидалось 2", st.Skipped)
+	}
+}
+
+// Нажатие — не состояние. Нажали дважды, значит переключить надо дважды, и
+// отсев повторов здесь проглотил бы второе нажатие.
+func TestOutAlwaysPassesToggle(t *testing.T) {
+	e, _, mq := newTestEngine()
+	e.SetLinks([]Link{{
+		ID: 2, Enabled: true, Direction: Out, OnlyChanged: true,
+		Topic: "shellies/a/relay/0/command", Decode: DecodeLamp,
+		Values:   map[string]string{StateToggle: "toggle"},
+		TargetID: 563, TargetSubID: 57,
+	}})
+
+	ctx := context.Background()
+	e.OnEvent(ctx, Event{ID: 563, SubID: 57, Payload: []byte{0xFF}})
+	e.OnEvent(ctx, Event{ID: 563, SubID: 57, Payload: []byte{0xFF}})
+
+	if msgs := mq.all(); len(msgs) != 2 {
+		t.Errorf("опубликовано %d сообщений, ожидалось 2 — второе нажатие проглочено", len(msgs))
+	}
+}

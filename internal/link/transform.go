@@ -170,18 +170,38 @@ func (l Link) digits() int {
 	return *l.Precision
 }
 
+// Value читает значение элемента умного дома до перевода по таблице.
+//
+// Отдельно от [Link.ToPayload] потому, что движку нужно именно исходное
+// значение: по нему видно, состояние это или мгновенное действие, а перевод
+// может превратить "toggle" во что угодно.
+func (l Link) Value(payload []byte) (string, error) { return l.decodeValue(payload) }
+
+// MapValue переводит значение по таблице связки.
+func (l Link) MapValue(value string) string {
+	if mapped, ok := l.Values[value]; ok {
+		return mapped
+	}
+	return value
+}
+
+// Momentary сообщает, что значение описывает мгновенное действие, а не
+// состояние.
+//
+// Различие существенное. Состояние приходит снова и снова — в каждом ответе на
+// запрос состояний, — и повторы надо отсеивать. Нажатие же повторяется по делу:
+// нажали дважды, значит переключить надо дважды, и отсев здесь проглотил бы
+// второе нажатие.
+func Momentary(value string) bool { return value == StateToggle }
+
 // ToPayload читает значение элемента умного дома и готовит полезную нагрузку для
 // публикации в топик.
 func (l Link) ToPayload(payload []byte) (string, error) {
-	value, err := l.decodeValue(payload)
+	value, err := l.Value(payload)
 	if err != nil {
 		return "", err
 	}
-	// Таблица переводит значение элемента в текст команды устройству.
-	if mapped, ok := l.Values[value]; ok {
-		return mapped, nil
-	}
-	return value, nil
+	return l.MapValue(value), nil
 }
 
 func (l Link) decodeValue(payload []byte) (string, error) {
