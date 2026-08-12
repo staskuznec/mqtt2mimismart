@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/staskuznec/mqtt2mimismart/internal/link"
 	"github.com/staskuznec/mqtt2mimismart/internal/mqtt"
 	"github.com/staskuznec/mqtt2mimismart/internal/shs"
 	"github.com/staskuznec/mqtt2mimismart/internal/store"
@@ -26,6 +27,7 @@ type Status struct {
 	SHS    func() shs.Status
 	MQTT   func() mqtt.Status
 	Topics func() []mqtt.TopicInfo
+	Links  func() map[int64]link.Stats
 }
 
 // Handler собирает маршруты веб-интерфейса.
@@ -50,16 +52,24 @@ type server struct {
 
 // health отдаёт состояние демона в JSON.
 type health struct {
-	Status     string      `json:"status"`
-	Version    string      `json:"version"`
-	UptimeSec  int64       `json:"uptime_sec"`
-	DBPath     string      `json:"db_path"`
-	DBSchema   int         `json:"db_schema"`
-	DBOK       bool        `json:"db_ok"`
-	Configured bool        `json:"configured"`
-	SHS        *shsHealth  `json:"shs,omitempty"`
-	MQTT       *mqttHealth `json:"mqtt,omitempty"`
-	Error      string      `json:"error,omitempty"`
+	Status     string       `json:"status"`
+	Version    string       `json:"version"`
+	UptimeSec  int64        `json:"uptime_sec"`
+	DBPath     string       `json:"db_path"`
+	DBSchema   int          `json:"db_schema"`
+	DBOK       bool         `json:"db_ok"`
+	Configured bool         `json:"configured"`
+	Links      *linksHealth `json:"links,omitempty"`
+	SHS        *shsHealth   `json:"shs,omitempty"`
+	MQTT       *mqttHealth  `json:"mqtt,omitempty"`
+	Error      string       `json:"error,omitempty"`
+}
+
+type linksHealth struct {
+	Delivered uint64 `json:"delivered"`
+	Skipped   uint64 `json:"skipped"`
+	Echoes    uint64 `json:"echoes"`
+	Errors    uint64 `json:"errors"`
 }
 
 type shsHealth struct {
@@ -135,6 +145,17 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 		if !st.Connected {
 			h.Status = "degraded"
 		}
+	}
+
+	if s.status.Links != nil {
+		var total linksHealth
+		for _, st := range s.status.Links() {
+			total.Delivered += st.Delivered
+			total.Skipped += st.Skipped
+			total.Echoes += st.Echoes
+			total.Errors += st.Errors
+		}
+		h.Links = &total
 	}
 
 	// Отсутствие связи — не повод отвечать ошибкой: демон жив, и веб обязан

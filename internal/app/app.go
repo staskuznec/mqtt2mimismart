@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/staskuznec/mqtt2mimismart/internal/link"
 	"github.com/staskuznec/mqtt2mimismart/internal/mqtt"
 	"github.com/staskuznec/mqtt2mimismart/internal/shs"
 	"github.com/staskuznec/mqtt2mimismart/internal/store"
@@ -32,8 +33,9 @@ type App struct {
 	version string
 	addr    string
 
-	mqtt *mqtt.Client
-	shs  *shs.Client
+	mqtt   *mqtt.Client
+	shs    *shs.Client
+	engine *link.Engine
 }
 
 // New собирает демон. Клиенты создаются только при заполненных настройках:
@@ -66,7 +68,38 @@ func New(log *slog.Logger, db *store.Store, version, addr string) (*App, error) 
 	if err != nil {
 		return nil, err
 	}
+
+	a.engine = link.NewEngine(a.shs, a.mqtt, log.With("component", "engine"))
+	if err := a.ReloadLinks(context.Background()); err != nil {
+		return nil, err
+	}
 	return a, nil
+}
+
+// ReloadLinks перечитывает связки из базы и отдаёт их движку.
+//
+// Вызывается при запуске и после каждой правки в вебе: перезапускать демон
+// ради изменённой связки было бы дико, а держать связки в двух местах — базе
+// и памяти движка — значит однажды их рассинхронизировать.
+func (a *App) ReloadLinks(ctx context.Context) error {
+	if a.engine == nil {
+		return nil
+	}
+
+	links, err := a.db.Links(ctx)
+	if err != nil {
+		return err
+	}
+	a.engine.SetLinks(links)
+
+	enabled := 0
+	for _, l := range links {
+		if l.Enabled {
+			enabled++
+		}
+	}
+	a.log.Info("связки загружены", "всего", len(links), "включено", enabled)
+	return nil
 }
 
 // Run поднимает всё и держит до отмены контекста.
@@ -132,12 +165,12 @@ func (a *App) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// consumeEvents разбирает очередь событий из умного дома.
+// consumeEvents проводит события из умного дома через движок связок.
 //
-// Пока движка связок нет, события пишутся в журнал. Это и есть проверка,
-// ради которой всё затевалось: видно, транслирует ли сервер нажатия по
-// элементам, которых мы не трогали, и что именно приезжает в полезной
-// нагрузке однобайтовых элементов.
+// Каждое событие пишется в журнал независимо от того, есть ли под него связка.
+// Это и есть проверка на стенде, ради которой всё затевалось: видно,
+// транслирует ли сервер нажатия по элементам, которых мы не трогали, и что
+// именно приезжает в полезной нагрузке однобайтовых элементов.
 func (a *App) consumeEvents(ctx context.Context) {
 	for {
 		select {
@@ -153,15 +186,21 @@ func (a *App) consumeEvents(ctx context.Context) {
 				"payload", fmt.Sprintf("% x", e.Payload),
 				"len", len(e.Payload),
 				"sync", e.Sync)
+
+			a.engine.OnEvent(ctx, link.Event{
+				ID:      e.ID,
+				SubID:   e.SubID,
+				Payload: e.Payload,
+				Sync:    e.Sync,
+			})
 		}
 	}
 }
 
-// consumeMessages разбирает очередь сообщений с шины.
+// consumeMessages проводит сообщения с шины через движок связок.
 //
-// Сами сообщения уже осели в снифере при приёме, поэтому здесь остаётся
-// только освобождать очередь. Когда появится движок связок, разбор встанет
-// на это место.
+// В снифер они уже осели при приёме, здесь остаётся только раскладывание по
+// элементам умного дома.
 func (a *App) consumeMessages(ctx context.Context) {
 	for {
 		select {
@@ -175,6 +214,8 @@ func (a *App) consumeMessages(ctx context.Context) {
 				"topic", m.Topic,
 				"payload", string(m.Payload),
 				"retained", m.Retained)
+
+			a.engine.OnMessage(ctx, m.Topic, m.Payload)
 		}
 	}
 }
@@ -188,6 +229,9 @@ func (a *App) serve(ctx context.Context) error {
 	if a.mqtt != nil {
 		status.MQTT = a.mqtt.Status
 		status.Topics = a.mqtt.Topics
+	}
+	if a.engine != nil {
+		status.Links = a.engine.Stats
 	}
 
 	srv := &http.Server{
