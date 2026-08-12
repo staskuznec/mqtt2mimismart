@@ -165,22 +165,41 @@ func (a *App) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// consumeEvents проводит события из умного дома через движок связок.
+// eventSummaryPeriod — как часто в журнал уходит сводка по событиям.
 //
-// Каждое событие пишется в журнал независимо от того, есть ли под него связка.
-// Это и есть проверка на стенде, ради которой всё затевалось: видно,
-// транслирует ли сервер нажатия по элементам, которых мы не трогали, и что
-// именно приезжает в полезной нагрузке однобайтовых элементов.
+// Каждое событие писать нельзя: сервер отдаёт снимок всего дома каждые
+// несколько секунд, и на объекте в три сотни элементов это десятки строк в
+// секунду. Подробности остаются на уровне debug, а на обычном уровне —
+// одна строка со счётчиками.
+const eventSummaryPeriod = time.Minute
+
+// consumeEvents проводит события из умного дома через движок связок.
 func (a *App) consumeEvents(ctx context.Context) {
+	var events, syncs uint64
+	summary := time.NewTicker(eventSummaryPeriod)
+	defer summary.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
+
+		case <-summary.C:
+			if events > 0 {
+				a.log.Info("события из умного дома",
+					"за_минуту", events, "из_них_снимок", syncs)
+				events, syncs = 0, 0
+			}
+
 		case e, ok := <-a.shs.Events():
 			if !ok {
 				return
 			}
-			a.log.Info("событие из умного дома",
+			events++
+			if e.Sync {
+				syncs++
+			}
+			a.log.Debug("событие из умного дома",
 				"addr", e.Addr(),
 				"pd", e.PD,
 				"payload", fmt.Sprintf("% x", e.Payload),
