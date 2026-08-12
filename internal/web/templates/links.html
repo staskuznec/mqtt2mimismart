@@ -13,7 +13,7 @@
   {{range .Links}}
     <tr>
       <td><span class="dot {{if .Enabled}}ok{{else}}warn{{end}}"></span></td>
-      <td>{{.Arrow}}</td>
+      <td>{{.Arrow}}{{if .Paired}} <span class="hint">·&nbsp;пара</span>{{end}}</td>
       <td class="mono">{{.Topic}}</td>
       <td class="mono">{{.Addr}}{{if .Name}} <span class="hint">{{.Name}}</span>{{end}}</td>
       <td>{{.Form}}</td>

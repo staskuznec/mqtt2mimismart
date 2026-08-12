@@ -22,6 +22,16 @@ type linkFormData struct {
 	Elements []elementOption
 	Preview  *previewResult
 
+	// Both — двусторонняя привязка: одно действие в интерфейсе, две связки
+	// под капотом. Поля второй стороны живут отдельно.
+	Both         bool
+	CommandTopic string
+	ValuesOut    string
+	Decode       string
+	Kind         string
+	QoS          byte
+	Retain       bool
+
 	// Values показывается таблицей значений в виде «строка на пару»: править
 	// JSON руками в веб-форме — издевательство.
 	ValuesText string
@@ -60,23 +70,55 @@ func (s *server) pageLinkForm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data.Link = l
+
+		// Двусторонняя привязка правится целиком: открыли одну сторону —
+		// видим обе, иначе легко изменить топик у одной и забыть про вторую.
+		if l.PairID != 0 {
+			pair, err := s.db.PairLinks(r.Context(), l.PairID)
+			if err == nil {
+				data.Both = true
+				for _, p := range pair {
+					if p.Direction == link.In {
+						data.Link = p
+					} else {
+						data.CommandTopic = p.Topic
+						data.ValuesOut = valuesToText(p.Values)
+						data.Decode, data.Kind = p.Decode, p.Kind
+						data.QoS, data.Retain = p.QoS, p.Retain
+					}
+				}
+			}
+		}
 	} else {
 		data.New = true
 		// Топик подставляется из раздела «Топики»: связка заводится нажатием
 		// рядом с тем, что реально ходит по шине, а не набором руками.
+		topic := r.URL.Query().Get("topic")
 		data.Link = link.Link{
 			Enabled:     true,
 			Direction:   link.In,
-			Topic:       r.URL.Query().Get("topic"),
+			Topic:       topic,
 			Extract:     link.ExtractRaw,
 			Encode:      link.EncodeByte,
-			Decode:      link.DecodeLamp,
-			Kind:        link.KindCommand,
 			OnlyChanged: true,
 		}
+		data.Decode, data.Kind, data.QoS = link.DecodeLamp, link.KindCommand, 1
+		// Командный топик у Shelly — тот же плюс "/command". Угадывать не
+		// обязательно, но в девяти случаях из десяти это он и есть.
+		if topic != "" {
+			data.CommandTopic = topic + "/command"
+		}
+		// Готовые таблицы для самого частого случая — реле и лампы.
+		data.ValuesText = "on = 1\noff = 0\noverpower = 1\n"
+		data.ValuesOut = "on = on\noff = off\ntoggle = toggle\n"
 	}
 
-	data.ValuesText = valuesToText(data.Link.Values)
+	if data.ValuesText == "" {
+		data.ValuesText = valuesToText(data.Link.Values)
+	}
+	if data.Decode == "" {
+		data.Decode, data.Kind = link.DecodeLamp, link.KindCommand
+	}
 	data.Elements = s.elementOptions(data.Link.Addr())
 	s.render(w, "link_form", data)
 }
@@ -123,6 +165,18 @@ func linkFromForm(r *http.Request) (link.Link, error) {
 		Unit:        r.PostFormValue("unit"),
 		OnlyChanged: r.PostFormValue("only_changed") != "",
 		Retain:      r.PostFormValue("retain") != "",
+	}
+
+	// Направление "both" разбирается отдельно: в модели его нет, там всегда
+	// одна сторона.
+	if l.Direction == "both" {
+		l.Direction = link.In
+	}
+
+	if pair := trim(r.PostFormValue("pair_id")); pair != "" {
+		if n, err := strconv.ParseInt(pair, 10, 64); err == nil {
+			l.PairID = n
+		}
 	}
 
 	if id := trim(r.PostFormValue("id")); id != "" {
@@ -189,13 +243,17 @@ func (s *server) saveLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	both := r.PostFormValue("direction") == "both"
+
 	l, err := linkFromForm(r)
-	if err == nil {
-		if l.ID == 0 {
-			_, err = s.db.CreateLink(r.Context(), l)
-		} else {
-			err = s.db.UpdateLink(r.Context(), l)
-		}
+	switch {
+	case err != nil:
+	case both:
+		err = s.savePair(r, l)
+	case l.ID == 0:
+		_, err = s.db.CreateLink(r.Context(), l)
+	default:
+		err = s.db.UpdateLink(r.Context(), l)
 	}
 	if err != nil {
 		// Форму отдаём обратно с введённым: терять заполненное из-за одной
@@ -203,14 +261,64 @@ func (s *server) saveLink(w http.ResponseWriter, r *http.Request) {
 		s.render(w, "link_form", linkFormData{
 			Title: "Связка", Nav: "links",
 			Link: l, New: l.ID == 0, Error: err.Error(),
-			ValuesText: r.PostFormValue("values"),
-			Elements:   s.elementOptions(l.Addr()),
+			ValuesText:   r.PostFormValue("values"),
+			Elements:     s.elementOptions(l.Addr()),
+			Both:         both,
+			CommandTopic: r.PostFormValue("command_topic"),
+			ValuesOut:    r.PostFormValue("values_out"),
+			Decode:       r.PostFormValue("decode"),
+			Kind:         r.PostFormValue("kind"),
 		})
 		return
 	}
 
 	s.reload(r)
 	http.Redirect(w, r, "/links", http.StatusSeeOther)
+}
+
+// savePair собирает из одной формы обе стороны двусторонней привязки.
+func (s *server) savePair(r *http.Request, in link.Link) error {
+	in.Direction = link.In
+
+	out := link.Link{
+		ID:          in.PairID, // подставится ниже, если сторона уже есть
+		Name:        in.Name,
+		Enabled:     in.Enabled,
+		Direction:   link.Out,
+		Topic:       trim(r.PostFormValue("command_topic")),
+		Kind:        r.PostFormValue("kind"),
+		Decode:      r.PostFormValue("decode"),
+		QoS:         in.QoS,
+		Retain:      in.Retain,
+		TargetID:    in.TargetID,
+		TargetSubID: in.TargetSubID,
+		OnlyChanged: in.OnlyChanged,
+		DeviceID:    in.DeviceID,
+	}
+
+	values, err := valuesFromText(r.PostFormValue("values_out"))
+	if err != nil {
+		return err
+	}
+	out.Values = values
+
+	// Правим существующую пару — находим вторую сторону по её идентификатору.
+	if in.PairID != 0 {
+		pair, err := s.db.PairLinks(r.Context(), in.PairID)
+		if err != nil {
+			return err
+		}
+		out.ID = 0
+		for _, p := range pair {
+			if p.Direction == link.Out {
+				out.ID = p.ID
+			}
+		}
+	} else {
+		out.ID = 0
+	}
+
+	return s.db.SavePair(r.Context(), in, out)
 }
 
 func (s *server) toggleLink(w http.ResponseWriter, r *http.Request) {

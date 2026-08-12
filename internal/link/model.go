@@ -78,8 +78,13 @@ const (
 type Link struct {
 	ID       int64
 	DeviceID int64 // 0 — связка сама по себе, вне устройства
-	Name     string
-	Enabled  bool
+
+	// PairID связывает две стороны двусторонней привязки. Ноль означает
+	// одностороннюю связку. Обе стороны носят один и тот же идентификатор —
+	// идентификатор первой из них.
+	PairID  int64
+	Name    string
+	Enabled bool
 
 	Direction Direction
 

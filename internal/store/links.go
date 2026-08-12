@@ -19,7 +19,7 @@ var ErrNotFound = errors.New("store: запись не найдена")
 // новой миграции.
 const linkColumns = `id, device_id, name, enabled, direction, topic, qos, retain,
 	extract, extract_path, values_json, scale, offset_value,
-	target_id, target_subid, encode, decode, unit, precision, only_changed, kind`
+	target_id, target_subid, encode, decode, unit, precision, only_changed, kind, pair_id`
 
 // Links читает все связки, сначала включённые, потом по адресу элемента.
 func (s *Store) Links(ctx context.Context) ([]link.Link, error) {
@@ -94,13 +94,13 @@ func (s *Store) CreateLink(ctx context.Context, l link.Link) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO links (device_id, name, enabled, direction, topic, qos, retain,
 			extract, extract_path, values_json, scale, offset_value,
-			target_id, target_subid, encode, decode, unit, precision, only_changed, kind,
+			target_id, target_subid, encode, decode, unit, precision, only_changed, kind, pair_id,
 			created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		nullableID(l.DeviceID), l.Name, l.Enabled, string(l.Direction), l.Topic, l.QoS, l.Retain,
 		l.Extract, l.ExtractPath, values, l.Scale, l.Offset,
 		l.TargetID, l.TargetSubID, l.Encode, l.Decode, l.Unit, l.Precision, l.OnlyChanged, l.Kind,
-		now, now)
+		nullableID(l.PairID), now, now)
 	if err != nil {
 		return 0, fmt.Errorf("store: сохранение связки: %w", err)
 	}
@@ -129,13 +129,13 @@ func (s *Store) UpdateLink(ctx context.Context, l link.Link) error {
 			qos = ?, retain = ?, extract = ?, extract_path = ?, values_json = ?,
 			scale = ?, offset_value = ?, target_id = ?, target_subid = ?,
 			encode = ?, decode = ?, unit = ?, precision = ?, only_changed = ?, kind = ?,
-			updated_at = ?
+			pair_id = ?, updated_at = ?
 		WHERE id = ?`,
 		nullableID(l.DeviceID), l.Name, l.Enabled, string(l.Direction), l.Topic,
 		l.QoS, l.Retain, l.Extract, l.ExtractPath, values,
 		l.Scale, l.Offset, l.TargetID, l.TargetSubID,
 		l.Encode, l.Decode, l.Unit, l.Precision, l.OnlyChanged, l.Kind,
-		time.Now().Unix(), l.ID)
+		nullableID(l.PairID), time.Now().Unix(), l.ID)
 	if err != nil {
 		return fmt.Errorf("store: обновление связки: %w", err)
 	}
@@ -154,8 +154,80 @@ func (s *Store) SetLinkEnabled(ctx context.Context, id int64, enabled bool) erro
 	return checkAffected(res, "связка", id)
 }
 
-// DeleteLink удаляет связку.
+// PairLinks собирает обе стороны двусторонней привязки.
+func (s *Store) PairLinks(ctx context.Context, pairID int64) ([]link.Link, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+linkColumns+` FROM links WHERE pair_id = ? ORDER BY direction`, pairID)
+	if err != nil {
+		return nil, fmt.Errorf("store: чтение пары связок: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []link.Link
+	for rows.Next() {
+		l, err := scanLink(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// SavePair сохраняет обе стороны двусторонней привязки одной транзакцией.
+//
+// Половина привязки хуже, чем её отсутствие: элемент показывает состояние, но
+// не управляет, и понять это можно только опытным путём.
+func (s *Store) SavePair(ctx context.Context, in, out link.Link) error {
+	in, out = in.Normalize(), out.Normalize()
+	if err := in.Validate(); err != nil {
+		return fmt.Errorf("сторона «шина → дом»: %w", err)
+	}
+	if err := out.Validate(); err != nil {
+		return fmt.Errorf("сторона «дом → шина»: %w", err)
+	}
+
+	if in.ID == 0 {
+		id, err := s.CreateLink(ctx, in)
+		if err != nil {
+			return err
+		}
+		in.ID = id
+		// Пара носит идентификатор первой стороны: отдельный счётчик заводить
+		// незачем, а этот заведомо не повторится.
+		in.PairID, out.PairID = id, id
+		if err := s.UpdateLink(ctx, in); err != nil {
+			return err
+		}
+	} else {
+		if err := s.UpdateLink(ctx, in); err != nil {
+			return err
+		}
+	}
+
+	out.PairID = in.PairID
+	if out.ID == 0 {
+		_, err := s.CreateLink(ctx, out)
+		return err
+	}
+	return s.UpdateLink(ctx, out)
+}
+
+// DeletePair удаляет обе стороны.
+func (s *Store) DeletePair(ctx context.Context, pairID int64) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM links WHERE pair_id = ?`, pairID); err != nil {
+		return fmt.Errorf("store: удаление пары связок: %w", err)
+	}
+	return nil
+}
+
+// DeleteLink удаляет связку. Если она входит в пару, уходит и вторая сторона.
 func (s *Store) DeleteLink(ctx context.Context, id int64) error {
+	l, err := s.Link(ctx, id)
+	if err == nil && l.PairID != 0 {
+		return s.DeletePair(ctx, l.PairID)
+	}
+
 	res, err := s.db.ExecContext(ctx, `DELETE FROM links WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("store: удаление связки: %w", err)
@@ -176,11 +248,12 @@ func scanLink(row scanner) (link.Link, error) {
 		direction string
 		values    string
 		precision sql.NullInt64
+		pairID    sql.NullInt64
 	)
 
 	err := row.Scan(&l.ID, &deviceID, &l.Name, &l.Enabled, &direction, &l.Topic, &l.QoS, &l.Retain,
 		&l.Extract, &l.ExtractPath, &values, &l.Scale, &l.Offset,
-		&l.TargetID, &l.TargetSubID, &l.Encode, &l.Decode, &l.Unit, &precision, &l.OnlyChanged, &l.Kind)
+		&l.TargetID, &l.TargetSubID, &l.Encode, &l.Decode, &l.Unit, &precision, &l.OnlyChanged, &l.Kind, &pairID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return link.Link{}, err
@@ -189,6 +262,7 @@ func scanLink(row scanner) (link.Link, error) {
 	}
 
 	l.DeviceID = deviceID.Int64
+	l.PairID = pairID.Int64
 	l.Direction = link.Direction(direction)
 	if precision.Valid {
 		p := int(precision.Int64)

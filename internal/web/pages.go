@@ -238,6 +238,7 @@ type linkRow struct {
 	LastValue string
 	Errors    uint64
 	LastError string
+	Paired    bool
 }
 
 func (s *server) pageLinks(w http.ResponseWriter, r *http.Request) {
@@ -256,7 +257,7 @@ func (s *server) pageLinks(w http.ResponseWriter, r *http.Request) {
 	for _, l := range links {
 		row := linkRow{
 			ID: l.ID, Enabled: l.Enabled, Topic: l.Topic,
-			Addr: l.Addr(), Name: l.Name,
+			Addr: l.Addr(), Name: l.Name, Paired: l.PairID != 0,
 		}
 		if l.Direction == link.Out {
 			row.Arrow, row.Form = "дом → шина", l.Decode

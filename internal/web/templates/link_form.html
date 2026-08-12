@@ -9,15 +9,22 @@
 
 <form method="post" action="/links/save">
   <input type="hidden" name="id" value="{{.Link.ID}}">
+  <input type="hidden" name="pair_id" value="{{.Link.PairID}}">
 
   <label>Название <span>— для журнала и таблицы</span>
     <input type="text" name="name" value="{{.Link.Name}}" placeholder="Прихожая, канал 0"></label>
 
   <label>Направление
-    <select name="direction">
-      <option value="in" {{if eq (printf "%s" .Link.Direction) "in"}}selected{{end}}>шина → умный дом (состояние устройства)</option>
-      <option value="out" {{if eq (printf "%s" .Link.Direction) "out"}}selected{{end}}>умный дом → шина (команда или показание)</option>
+    <select name="direction" id="direction" onchange="showSides()">
+      <option value="both" {{if .Both}}selected{{end}}>в обе стороны — состояние и управление</option>
+      <option value="in" {{if and (not .Both) (eq (printf "%s" .Link.Direction) "in")}}selected{{end}}>только шина → умный дом (показание или состояние)</option>
+      <option value="out" {{if and (not .Both) (eq (printf "%s" .Link.Direction) "out")}}selected{{end}}>только умный дом → шина (команда или показание наружу)</option>
     </select></label>
+  <p class="hint" id="both-hint">
+    Двусторонняя привязка — это две связки под капотом: у направлений свои
+    счётчики и своё включение, и когда команда не уходит, а состояние
+    приходит, это должно быть видно раздельно. Заводятся и удаляются вместе.
+  </p>
 
   <label>Топик
     <span>— для входящей допускаются «+» и «#», для исходящей нужен точный</span>
@@ -36,7 +43,8 @@
        Проверьте связь на странице <a href="/">Обзор</a>.</p>
   {{end}}
 
-  <h2>Для направления «шина → умный дом»</h2>
+  <div id="side-in">
+  <h2>Со стороны шины: что приходит от устройства</h2>
   <label>Что взять из сообщения
     <select name="extract">
       <option value="raw" {{if eq .Link.Extract "raw"}}selected{{end}}>всю нагрузку целиком</option>
@@ -62,26 +70,37 @@
   <label>Смещение
     <input type="text" name="offset" value="{{if .Link.Offset}}{{.Link.Offset}}{{end}}"></label>
 
-  <h2>Для направления «умный дом → шина»</h2>
+  </div>
+
+  <div id="side-out">
+  <h2>Со стороны умного дома: что уходит на шину</h2>
+  <label>Командный топик <span>— у Shelly это тот же топик плюс «/command»</span>
+    <input type="text" name="command_topic" value="{{.CommandTopic}}"
+           placeholder="shellies/shellyswitch25-4022D8956527/relay/0/command"></label>
   <label>Назначение
     <select name="kind">
-      <option value="command" {{if eq .Link.Kind "command"}}selected{{end}}>команда устройству</option>
-      <option value="state" {{if eq .Link.Kind "state"}}selected{{end}}>показание наружу</option>
+      <option value="command" {{if eq .Kind "command"}}selected{{end}}>команда устройству</option>
+      <option value="state" {{if eq .Kind "state"}}selected{{end}}>показание наружу</option>
     </select></label>
   <label>Как читать элемент
     <select name="decode">
-      <option value="lamp" {{if eq .Link.Decode "lamp"}}selected{{end}}>лампа: 0xFF нажатие, 1 и 8 включить, 0 и 9 выключить</option>
-      <option value="byte" {{if eq .Link.Decode "byte"}}selected{{end}}>один байт как число</option>
-      <option value="sensor" {{if eq .Link.Decode "sensor"}}selected{{end}}>датчик 8.8</option>
-      <option value="text" {{if eq .Link.Decode "text"}}selected{{end}}>текст</option>
+      <option value="lamp" {{if eq .Decode "lamp"}}selected{{end}}>лампа: 0xFF нажатие, 1 и 8 включить, 0 и 9 выключить</option>
+      <option value="byte" {{if eq .Decode "byte"}}selected{{end}}>один байт как число</option>
+      <option value="sensor" {{if eq .Decode "sensor"}}selected{{end}}>датчик 8.8</option>
+      <option value="text" {{if eq .Decode "text"}}selected{{end}}>текст</option>
     </select></label>
   <label>QoS
-    <input type="text" name="qos" value="{{.Link.QoS}}" style="max-width:80px"></label>
-  <label><input type="checkbox" name="retain" {{if .Link.Retain}}checked{{end}}>
+    <input type="text" name="qos" value="{{.QoS}}" style="max-width:80px"></label>
+  <label>Таблица значений на выход <span>— значение элемента в команду устройству</span>
+    <textarea name="values_out" rows="4" style="width:100%;max-width:460px;font-family:ui-monospace,monospace"
+              placeholder="on = on&#10;off = off&#10;toggle = toggle">{{.ValuesOut}}</textarea></label>
+  <label><input type="checkbox" name="retain" {{if .Retain}}checked{{end}}>
     сохранять на брокере <span>— только для показаний; на команде заставит устройство сработать при включении</span></label>
 
+  </div>
+
   <h2>Общее</h2>
-  <label>Таблица значений <span>— по строке на пару, «ключ = значение»</span>
+  <label>Таблица значений на вход <span>— по строке на пару, «ключ = значение»</span>
     <textarea name="values" rows="5" style="width:100%;max-width:460px;font-family:ui-monospace,monospace"
               placeholder="on = 1&#10;off = 0&#10;overpower = 1">{{.ValuesText}}</textarea></label>
 
@@ -115,6 +134,22 @@ async function preview(form) {
 document.querySelector('select[name=target]').addEventListener('change', function () {
   const form = this.selectedOptions[0].dataset.form;
   if (form) { document.querySelector('select[name=encode]').value = form; }
+});
+
+// Ненужную половину формы прячем: показывать поля, которые ни на что не
+// влияют, — верный способ заполнить их и потом гадать, почему не работает.
+function showSides() {
+  const d = document.getElementById('direction').value;
+  document.getElementById('side-in').style.display  = (d === 'out') ? 'none' : '';
+  document.getElementById('side-out').style.display = (d === 'in')  ? 'none' : '';
+  document.getElementById('both-hint').style.display = (d === 'both') ? '' : 'none';
+}
+showSides();
+
+// Командный топик у Shelly — состояние плюс "/command".
+document.querySelector('input[name=topic]').addEventListener('blur', function () {
+  const cmd = document.querySelector('input[name=command_topic]');
+  if (cmd && !cmd.value && this.value) { cmd.value = this.value + '/command'; }
 });
 </script>
 {{end}}
