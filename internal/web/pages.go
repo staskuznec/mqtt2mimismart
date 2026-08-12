@@ -191,12 +191,20 @@ func (s *server) saveSettings(w http.ResponseWriter, r *http.Request) {
 
 type topicsData struct {
 	Title, Nav string
-	Topics     []topicRow
+	Groups     []topicGroup
+	Total      int
 	Overflow   uint64
+}
+
+// topicGroup — топики одного устройства, собранные по мастер-топику.
+type topicGroup struct {
+	Prefix string
+	Topics []topicRow
 }
 
 type topicRow struct {
 	Topic     string
+	Short     string // топик без мастер-части: она и так в заголовке группы
 	Payload   string
 	Truncated bool
 	Kind      string
@@ -207,41 +215,83 @@ type topicRow struct {
 
 func (s *server) pageTopics(w http.ResponseWriter, _ *http.Request) {
 	data := topicsData{Title: "Топики", Nav: "topics"}
-	if s.status.Topics != nil {
-		for _, t := range s.status.Topics() {
-			data.Topics = append(data.Topics, topicRow{
-				Topic:     t.Topic,
-				Payload:   string(t.LastPayload),
-				Truncated: t.Truncated,
-				Kind:      t.Kind,
-				Retained:  t.Retained,
-				Count:     t.Count,
-				Ago:       ago(t.LastAt),
-			})
+	if s.status.Topics == nil {
+		s.render(w, "topics", data)
+		return
+	}
+
+	// Группируем по первым двум уровням: у Shelly это "shellies/<id>", и такая
+	// же двухуровневая схема у большинства прошивок. Одно устройство — одна
+	// таблица, иначе на объекте с десятком реле ничего не найти.
+	order := make([]string, 0, 8)
+	groups := make(map[string][]topicRow)
+
+	for _, t := range s.status.Topics() {
+		prefix := topicPrefix(t.Topic)
+		if _, ok := groups[prefix]; !ok {
+			order = append(order, prefix)
 		}
+		groups[prefix] = append(groups[prefix], topicRow{
+			Topic:     t.Topic,
+			Short:     strings.TrimPrefix(strings.TrimPrefix(t.Topic, prefix), "/"),
+			Payload:   string(t.LastPayload),
+			Truncated: t.Truncated,
+			Kind:      t.Kind,
+			Retained:  t.Retained,
+			Count:     t.Count,
+			Ago:       ago(t.LastAt),
+		})
+		data.Total++
+	}
+
+	for _, prefix := range order {
+		data.Groups = append(data.Groups, topicGroup{Prefix: prefix, Topics: groups[prefix]})
 	}
 	s.render(w, "topics", data)
+}
+
+// topicPrefix выделяет мастер-топик устройства — первые два уровня.
+func topicPrefix(topic string) string {
+	parts := strings.Split(topic, "/")
+	if len(parts) < 3 {
+		return topic
+	}
+	return parts[0] + "/" + parts[1]
 }
 
 // ---------------------------------------------------------------- Связки
 
 type linksData struct {
 	Title, Nav string
-	Links      []linkRow
+	Groups     []linkGroup
+	Total      int
+}
+
+// linkGroup — связки одного устройства.
+//
+// Устройства различаются мастер-топиком: "shellies/shellyswitch25-4022D8956527"
+// у одного, другой префикс у другого. Валить их в общий список — значит искать
+// нужную строку глазами среди сотни чужих.
+type linkGroup struct {
+	Device string // имя устройства
+	Prefix string // мастер-топик
+	Links  []linkRow
 }
 
 type linkRow struct {
-	ID        int64
-	Enabled   bool
-	Arrow     string
-	Topic     string
-	Addr      string
-	Name      string
-	Form      string
-	LastValue string
-	Errors    uint64
-	LastError string
-	Paired    bool
+	ID           int64
+	PairID       int64
+	Enabled      bool
+	Arrow        string
+	Topic        string
+	CommandTopic string // у пары — топик команды, второй строкой
+	Addr         string
+	Name         string
+	Form         string
+	LastValue    string
+	Errors       uint64
+	LastError    string
+	Paired       bool
 }
 
 func (s *server) pageLinks(w http.ResponseWriter, r *http.Request) {
@@ -251,27 +301,82 @@ func (s *server) pageLinks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	devices, err := s.db.Devices(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	byID := make(map[int64]store.Device, len(devices))
+	for _, d := range devices {
+		byID[d.ID] = d
+	}
+
 	var stats map[int64]link.Stats
 	if s.status.Links != nil {
 		stats = s.status.Links()
 	}
 
-	data := linksData{Title: "Связки", Nav: "links"}
+	// Двусторонняя привязка показывается одной строкой: две — это внутреннее
+	// устройство, а на экране от них только рябит. Правится и переключается
+	// она тоже как одна.
+	rows := make(map[int64][]linkRow)  // устройство → строки
+	byPair := make(map[int64][2]int64) // метка пары → устройство и номер строки
+
 	for _, l := range links {
+		st := stats[l.ID]
+
+		if l.PairID != 0 {
+			if pos, ok := byPair[l.PairID]; ok {
+				group := rows[pos[0]]
+				row := &group[pos[1]]
+				row.Arrow = "шина ⇄ дом"
+				if l.Direction == link.Out {
+					row.CommandTopic = l.Topic
+				} else {
+					// Входящая сторона задаёт основной топик, форму и адрес
+					// для правки: форма связки открывается именно с неё.
+					row.CommandTopic, row.Topic = row.Topic, l.Topic
+					row.Form, row.ID = l.Encode, l.ID
+				}
+				row.Errors += st.Errors
+				if st.LastError != "" {
+					row.LastError = st.LastError
+				}
+				if row.LastValue == "" {
+					row.LastValue = st.LastValue
+				}
+				continue
+			}
+			byPair[l.PairID] = [2]int64{l.DeviceID, int64(len(rows[l.DeviceID]))}
+		}
+
 		row := linkRow{
-			ID: l.ID, Enabled: l.Enabled, Topic: l.Topic,
+			ID: l.ID, PairID: l.PairID, Enabled: l.Enabled, Topic: l.Topic,
 			Addr: l.Addr(), Name: l.Name, Paired: l.PairID != 0,
+			LastValue: st.LastValue, Errors: st.Errors, LastError: st.LastError,
 		}
 		if l.Direction == link.Out {
 			row.Arrow, row.Form = "дом → шина", l.Decode
 		} else {
 			row.Arrow, row.Form = "шина → дом", l.Encode
 		}
-		if st, ok := stats[l.ID]; ok {
-			row.LastValue, row.Errors, row.LastError = st.LastValue, st.Errors, st.LastError
-		}
-		data.Links = append(data.Links, row)
+		rows[l.DeviceID] = append(rows[l.DeviceID], row)
 	}
+
+	data := linksData{Title: "Связки", Nav: "links", Total: len(links)}
+
+	// Устройства по порядку, затем связки, заведённые вручную.
+	for _, d := range devices {
+		if group, ok := rows[d.ID]; ok {
+			data.Groups = append(data.Groups, linkGroup{
+				Device: d.Name, Prefix: d.TopicPrefix, Links: group,
+			})
+		}
+	}
+	if loose, ok := rows[0]; ok {
+		data.Groups = append(data.Groups, linkGroup{Device: "Вне устройств", Links: loose})
+	}
+
 	s.render(w, "links", data)
 }
 

@@ -479,3 +479,84 @@ func TestSaveTemplateValidates(t *testing.T) {
 		t.Error("шаблон без связок сохранён")
 	}
 }
+
+// Односторонняя связка, превращённая в двустороннюю, обязана получить метку
+// пары. Без неё стороны работают, но правятся и удаляются порознь — и одна
+// остаётся жить после удаления другой.
+func TestSinglePromotedToPairGetsPairID(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	id, err := s.CreateLink(ctx, sampleIn())
+	if err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	in, _ := s.Link(ctx, id)
+	out := link.Link{
+		Enabled: true, Direction: link.Out, Kind: link.KindCommand,
+		Topic: in.Topic + "/command", Decode: link.DecodeLamp,
+		TargetID: in.TargetID, TargetSubID: in.TargetSubID,
+	}
+	if err := s.SavePair(ctx, in, out); err != nil {
+		t.Fatalf("SavePair: %v", err)
+	}
+
+	links, _ := s.Links(ctx)
+	if len(links) != 2 {
+		t.Fatalf("связок %d, ожидалось 2", len(links))
+	}
+	for _, l := range links {
+		if l.PairID != id {
+			t.Errorf("связка %d: метка пары = %d, ожидалась %d", l.ID, l.PairID, id)
+		}
+	}
+
+	// И теперь удаление одной стороны уносит обе.
+	if err := s.DeleteLink(ctx, id); err != nil {
+		t.Fatalf("DeleteLink: %v", err)
+	}
+	if links, _ := s.Links(ctx); len(links) != 0 {
+		t.Errorf("после удаления осталось %d связок", len(links))
+	}
+}
+
+// Повторное сохранение пары не должно плодить связки.
+func TestSavePairIsIdempotent(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	in := sampleIn()
+	out := link.Link{
+		Enabled: true, Direction: link.Out, Kind: link.KindCommand,
+		Topic: in.Topic + "/command", Decode: link.DecodeLamp,
+		TargetID: in.TargetID, TargetSubID: in.TargetSubID,
+	}
+	if err := s.SavePair(ctx, in, out); err != nil {
+		t.Fatalf("SavePair: %v", err)
+	}
+
+	links, _ := s.Links(ctx)
+	if len(links) != 2 {
+		t.Fatalf("после создания связок %d, ожидалось 2", len(links))
+	}
+
+	// Правим, как это делает форма: обе стороны с их идентификаторами.
+	var savedIn, savedOut link.Link
+	for _, l := range links {
+		if l.Direction == link.In {
+			savedIn = l
+		} else {
+			savedOut = l
+		}
+	}
+	savedIn.Name = "Переименовали"
+	if err := s.SavePair(ctx, savedIn, savedOut); err != nil {
+		t.Fatalf("повторный SavePair: %v", err)
+	}
+
+	links, _ = s.Links(ctx)
+	if len(links) != 2 {
+		t.Errorf("после правки связок %d, ожидалось 2 — правка создала дубль", len(links))
+	}
+}

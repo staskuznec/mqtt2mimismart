@@ -1,47 +1,56 @@
 {{define "content"}}
 <h1>Связки</h1>
-<p class="hint">Что и куда переводит шлюз. Всего {{len .Links}}.</p>
-<div class="toolbar"><a href="/links/new" class="btn">Новая связка</a></div>
-
-{{if .Links}}
-<div class="tablewrap">
-<table>
-  <thead><tr>
-    <th></th><th>Направление</th><th>Топик</th><th>Элемент</th>
-    <th>Форма</th><th>Последнее</th><th style="text-align:right">Ошибок</th><th></th>
-  </tr></thead>
-  <tbody>
-  {{range .Links}}
-    <tr>
-      <td><span class="dot {{if .Enabled}}ok{{else}}warn{{end}}"></span></td>
-      <td>{{.Arrow}}{{if .Paired}} <span class="hint">·&nbsp;пара</span>{{end}}</td>
-      <td class="mono">{{.Topic}}</td>
-      <td class="mono">{{.Addr}}{{if .Name}} <span class="hint">{{.Name}}</span>{{end}}</td>
-      <td>{{.Form}}</td>
-      <td class="mono">{{.LastValue}}</td>
-      <td class="num">{{.Errors}}</td>
-      <td style="white-space:nowrap">
-        <a href="/links/{{.ID}}">править</a>
-        <form method="post" action="/links/{{.ID}}/toggle" style="display:inline">
-          <button type="submit" class="link">
-            {{if .Enabled}}выключить{{else}}включить{{end}}</button>
-        </form>
-        <form method="post" action="/links/{{.ID}}/delete" style="display:inline"
-              onsubmit="return confirm('Удалить связку?')">
-          <button type="submit" class="link danger">удалить</button>
-        </form>
-      </td>
-    </tr>
-    {{if .LastError}}<tr><td></td><td colspan="6" class="hint">{{.LastError}}</td></tr>{{end}}
-  {{end}}
-  </tbody>
-</table>
+<p class="hint">
+  Что и куда переводит шлюз. Всего {{.Total}}. Двусторонняя привязка показана
+  одной строкой — под капотом это две связки, но правятся и переключаются они
+  вместе.
+</p>
+<div class="toolbar">
+  <a href="/links/new" class="btn">Новая связка</a>
+  <a href="/devices/new" class="btn ghost">Развернуть шаблон</a>
 </div>
+
+{{range .Groups}}
+  <h2>{{.Device}}{{with .Prefix}} · <span class="mono">{{.}}</span>{{end}}</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr>
+      <th></th><th>Направление</th><th>Топик</th><th>Элемент</th>
+      <th>Форма</th><th>Последнее</th><th class="num">Ошибок</th><th></th>
+    </tr></thead>
+    <tbody>
+    {{range .Links}}
+      <tr>
+        <td><span class="dot {{if .Enabled}}ok{{else}}warn{{end}}"></span></td>
+        <td>{{.Arrow}}</td>
+        <td class="mono">
+          {{.Topic}}
+          {{with .CommandTopic}}<br><span class="hint mono">{{.}}</span>{{end}}
+        </td>
+        <td class="mono">{{.Addr}}{{with .Name}}<br><span class="hint">{{.}}</span>{{end}}</td>
+        <td>{{.Form}}</td>
+        <td class="mono">{{.LastValue}}</td>
+        <td class="num">{{.Errors}}</td>
+        <td style="white-space:nowrap">
+          <a href="/links/{{.ID}}">править</a>
+          <form method="post" action="/links/{{.ID}}/toggle" style="display:inline">
+            <button type="submit" class="link">{{if .Enabled}}выключить{{else}}включить{{end}}</button>
+          </form>
+          <form method="post" action="/links/{{.ID}}/delete" style="display:inline"
+                onsubmit="return confirm('Удалить связку{{if .Paired}} вместе с обратной стороной{{end}}?')">
+            <button type="submit" class="link danger">удалить</button>
+          </form>
+        </td>
+      </tr>
+      {{with .LastError}}<tr><td></td><td colspan="7" class="hint">{{.}}</td></tr>{{end}}
+    {{end}}
+    </tbody>
+  </table>
+  </div>
 {{else}}
 <p class="empty">
-  Связок пока нет. Заведите первую кнопкой выше или нажмите «Связать» рядом с
-  нужным топиком в разделе <a href="/topics">Топики</a> — тогда топик
-  подставится сам.
+  Связок пока нет. Разверните шаблон устройства — это быстрее всего, — или
+  нажмите «Связать» рядом с нужным топиком в разделе <a href="/topics">Топики</a>.
 </p>
 {{end}}
 {{end}}

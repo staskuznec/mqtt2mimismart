@@ -37,6 +37,111 @@
 </table>
 </div>
 
+<h2>Как устроен шаблон</h2>
+<details class="card" style="max-width:860px">
+  <summary style="cursor:pointer;font-weight:600">Развернуть описание формата</summary>
+
+  <p class="hint" style="margin-top:14px">
+    Шаблон состоит из двух списков. <b>Роли</b> — то, что предстоит назначить
+    при развёртывании: какой элемент умного дома отвечает за канал, какой за
+    мощность. <b>Связки</b> — что из этого получится: топик, форма значения,
+    единица, множитель. Пользователь выбирает элементы, всё остальное уже
+    расставлено вами.
+  </p>
+
+  <p class="hint">
+    Подстановка <code>{{"{{prefix}}"}}</code> в топике обязательна — на её место
+    встаёт мастер-топик устройства, например
+    <code>shellies/shellyswitch25-4022D8956527</code>. Роль, для которой элемент
+    не выбран, пропускается вместе со своими связками: так одним шаблоном
+    покрывается и полностью заведённое устройство, и то, от которого нужен один
+    канал.
+  </p>
+
+  <table>
+    <thead><tr><th>Поле роли</th><th>Что задаёт</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">key</td><td>идентификатор, на него ссылаются связки</td></tr>
+      <tr><td class="mono">title</td><td>как роль называется в форме развёртывания</td></tr>
+      <tr><td class="mono">form</td><td><code>byte</code>, <code>sensor</code> или <code>text</code> — подсказка, какой элемент подходит</td></tr>
+      <tr><td class="mono">hint</td><td>пояснение под названием</td></tr>
+      <tr><td class="mono">required</td><td><code>true</code> — без неё шаблон не применить</td></tr>
+    </tbody>
+  </table>
+
+  <table style="margin-top:18px">
+    <thead><tr><th>Поле связки</th><th>Что задаёт</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">name</td><td>название связки; внутри шаблона должно быть уникальным</td></tr>
+      <tr><td class="mono">direction</td><td><code>in</code> — с шины в умный дом, <code>out</code> — обратно</td></tr>
+      <tr><td class="mono">role</td><td>из какой роли берётся элемент</td></tr>
+      <tr><td class="mono">topic</td><td>топик с подстановкой <code>{{"{{prefix}}"}}</code></td></tr>
+      <tr><td class="mono">pair</td><td>метка пары: две связки с одной меткой заводятся и удаляются вместе</td></tr>
+      <tr><td class="mono">encode</td><td>форма записи для <code>in</code>: <code>byte</code>, <code>sensor</code>, <code>text</code></td></tr>
+      <tr><td class="mono">decode</td><td>чтение элемента для <code>out</code>: <code>lamp</code>, <code>byte</code>, <code>sensor</code>, <code>text</code></td></tr>
+      <tr><td class="mono">kind</td><td>для <code>out</code>: <code>command</code> — команда устройству, <code>state</code> — показание наружу</td></tr>
+      <tr><td class="mono">values</td><td>таблица перевода: <code>{"on": "1", "off": "0"}</code></td></tr>
+      <tr><td class="mono">unit</td><td>приписка к тексту, например <code>" Вт"</code></td></tr>
+      <tr><td class="mono">precision</td><td>знаков после запятой; не указано — без округления</td></tr>
+      <tr><td class="mono">scale</td><td>множитель; ватт-минуты в кВт·ч это <code>0.0000166667</code></td></tr>
+      <tr><td class="mono">qos</td><td>0, 1 или 2; для команд разумно 1</td></tr>
+      <tr><td class="mono">retain</td><td>только для <code>kind: state</code>; на команде запрещён</td></tr>
+      <tr><td class="mono">only_changed</td><td>отсев повторов; по умолчанию включён</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Три вещи, на которых легко обжечься</h2>
+  <p class="hint">
+    <b>Форма значения.</b> У ламп, штор, скриптов и клапанов состояние занимает
+    ровно один байт. Если задать им <code>sensor</code>, единица уедет как
+    <code>00 01</code>, младший байт окажется нулевым, и элемент останется
+    выключенным — при том что выключение будет «работать». Ищется такое долго.
+  </p>
+  <p class="hint">
+    <b>retain на команде.</b> Брокер отдаст сохранённую команду устройству при
+    следующем его подключении, и реле щёлкнет само. Проверка это отвергнет, но
+    знать причину полезно.
+  </p>
+  <p class="hint">
+    <b>Единицы счётчиков.</b> У Shelly энергия считается в ватт-минутах, и
+    ошибка в множителе тихая — ровно в шестьдесят раз.
+  </p>
+
+  <h2>Пример</h2>
+  <pre class="mono" style="overflow-x:auto;background:var(--bg);padding:14px;border-radius:8px">{
+  "name": "Розетка с измерением",
+  "model": "SHPLG-S",
+  "note": "Один канал, мощность и энергия.",
+  "roles": [
+    {"key": "sw",     "title": "Розетка", "form": "byte", "required": true},
+    {"key": "power",  "title": "Мощность, Вт", "form": "text"}
+  ],
+  "links": [
+    {
+      "name": "Состояние", "direction": "in", "role": "sw", "pair": "sw",
+      "topic": "{{"{{prefix}}"}}/relay/0",
+      "encode": "byte",
+      "values": {"on": "1", "off": "0", "overpower": "1"}
+    },
+    {
+      "name": "Команда", "direction": "out", "role": "sw", "pair": "sw",
+      "topic": "{{"{{prefix}}"}}/relay/0/command",
+      "kind": "command", "decode": "lamp", "qos": 1,
+      "values": {"on": "on", "off": "off", "toggle": "toggle"}
+    },
+    {
+      "name": "Мощность", "direction": "in", "role": "power",
+      "topic": "{{"{{prefix}}"}}/relay/0/power",
+      "encode": "text", "unit": " Вт", "precision": 1
+    }
+  ]
+}</pre>
+  <p class="hint">
+    Проще всего начать с готового: нажмите «открыть» у встроенного шаблона,
+    скопируйте, поправьте под свою модель и загрузите под новым ключом.
+  </p>
+</details>
+
 <h2>Загрузить шаблон</h2>
 <form method="post" action="/templates/upload" enctype="multipart/form-data" class="stack">
   <label>Ключ <span>— по нему шаблон опознаётся; совпал со встроенным — перекроет его</span>

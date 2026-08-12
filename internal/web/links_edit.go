@@ -20,6 +20,7 @@ type linkFormData struct {
 	Error      string
 
 	Elements []elementOption
+	Topics   []string // что видно на шине, для подсказки в поле топика
 	Preview  *previewResult
 
 	// Both — двусторонняя привязка: одно действие в интерфейсе, две связки
@@ -120,7 +121,22 @@ func (s *server) pageLinkForm(w http.ResponseWriter, r *http.Request) {
 		data.Decode, data.Kind = link.DecodeLamp, link.KindCommand
 	}
 	data.Elements = s.elementOptions(data.Link.Addr())
+	data.Topics = s.knownTopics()
 	s.render(w, "link_form", data)
+}
+
+// knownTopics отдаёт топики, реально ходящие по шине, — для подсказки в поле.
+func (s *server) knownTopics() []string {
+	if s.status.Topics == nil {
+		return nil
+	}
+	seen := s.status.Topics()
+	out := make([]string, 0, len(seen))
+	for _, t := range seen {
+		out = append(out, t.Topic)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // elementOptions собирает список элементов для выбора.
@@ -246,6 +262,16 @@ func (s *server) saveLink(w http.ResponseWriter, r *http.Request) {
 	both := r.PostFormValue("direction") == "both"
 
 	l, err := linkFromForm(r)
+
+	// Форма про устройство не знает, а связка ему принадлежит. Без этого
+	// правка выбрасывала бы её из карточки устройства в общий список — и
+	// удаление устройства переставало бы её уносить.
+	if err == nil && l.ID != 0 {
+		if stored, e := s.db.Link(r.Context(), l.ID); e == nil {
+			l.DeviceID = stored.DeviceID
+		}
+	}
+
 	switch {
 	case err != nil:
 	case both:
@@ -302,20 +328,19 @@ func (s *server) savePair(r *http.Request, in link.Link) error {
 	}
 	out.Values = values
 
-	// Правим существующую пару — находим вторую сторону по её идентификатору.
+	// Правим существующую пару — находим вторую сторону по её идентификатору
+	// и сохраняем её принадлежность устройству.
+	out.ID = 0
 	if in.PairID != 0 {
 		pair, err := s.db.PairLinks(r.Context(), in.PairID)
 		if err != nil {
 			return err
 		}
-		out.ID = 0
 		for _, p := range pair {
 			if p.Direction == link.Out {
-				out.ID = p.ID
+				out.ID, out.DeviceID = p.ID, p.DeviceID
 			}
 		}
-	} else {
-		out.ID = 0
 	}
 
 	return s.db.SavePair(r.Context(), in, out)
@@ -332,7 +357,14 @@ func (s *server) toggleLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	if err := s.db.SetLinkEnabled(r.Context(), id, !l.Enabled); err != nil {
+	// Пара переключается целиком: половина привязки — это элемент, который
+	// показывает состояние, но не управляет.
+	if l.PairID != 0 {
+		err = s.db.SetPairEnabled(r.Context(), l.PairID, !l.Enabled)
+	} else {
+		err = s.db.SetLinkEnabled(r.Context(), id, !l.Enabled)
+	}
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

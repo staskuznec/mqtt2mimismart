@@ -174,7 +174,7 @@ func (s *Store) PairLinks(ctx context.Context, pairID int64) ([]link.Link, error
 	return out, rows.Err()
 }
 
-// SavePair сохраняет обе стороны двусторонней привязки одной транзакцией.
+// SavePair сохраняет обе стороны двусторонней привязки.
 //
 // Половина привязки хуже, чем её отсутствие: элемент показывает состояние, но
 // не управляет, и понять это можно только опытным путём.
@@ -187,30 +187,44 @@ func (s *Store) SavePair(ctx context.Context, in, out link.Link) error {
 		return fmt.Errorf("сторона «дом → шина»: %w", err)
 	}
 
+	// Сначала добиваемся того, чтобы у первой стороны был идентификатор:
+	// он же станет идентификатором пары.
 	if in.ID == 0 {
 		id, err := s.CreateLink(ctx, in)
 		if err != nil {
 			return err
 		}
 		in.ID = id
-		// Пара носит идентификатор первой стороны: отдельный счётчик заводить
-		// незачем, а этот заведомо не повторится.
-		in.PairID, out.PairID = id, id
-		if err := s.UpdateLink(ctx, in); err != nil {
-			return err
-		}
-	} else {
-		if err := s.UpdateLink(ctx, in); err != nil {
-			return err
-		}
 	}
 
+	// Односторонняя связка, которую превратили в двустороннюю, приходит сюда
+	// с нулевой меткой пары. Без этой строки обе стороны оставались бы
+	// несвязанными: по отдельности работают, а удаляются и правятся порознь.
+	if in.PairID == 0 {
+		in.PairID = in.ID
+	}
 	out.PairID = in.PairID
+
+	if err := s.UpdateLink(ctx, in); err != nil {
+		return err
+	}
+
 	if out.ID == 0 {
 		_, err := s.CreateLink(ctx, out)
 		return err
 	}
 	return s.UpdateLink(ctx, out)
+}
+
+// SetPairEnabled включает или выключает обе стороны разом.
+func (s *Store) SetPairEnabled(ctx context.Context, pairID int64, enabled bool) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE links SET enabled = ?, updated_at = ? WHERE pair_id = ?`,
+		enabled, time.Now().Unix(), pairID)
+	if err != nil {
+		return fmt.Errorf("store: переключение пары связок: %w", err)
+	}
+	return nil
 }
 
 // DeletePair удаляет обе стороны.

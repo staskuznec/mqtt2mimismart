@@ -28,11 +28,17 @@
 
   <label>Топик
     <span>— для входящей допускаются «+» и «#», для исходящей нужен точный</span>
-    <input type="text" name="topic" value="{{.Link.Topic}}" required
+    <input type="text" name="topic" value="{{.Link.Topic}}" required list="known-topics"
            placeholder="shellies/shellyswitch25-4022D8956527/relay/0"></label>
+  <datalist id="known-topics">
+    {{range .Topics}}<option value="{{.}}">{{end}}
+  </datalist>
 
   <label>Элемент умного дома
-    <select name="target" required>
+    <span>наберите часть имени, области или адреса, чтобы отфильтровать список</span>
+    <input type="text" id="element-search" placeholder="прихожая, свет, 758…"
+           oninput="filterElements(this.value)" autocomplete="off">
+    <select name="target" required id="element-select" size="1">
       <option value="">— выберите —</option>
       {{range .Elements}}
         <option value="{{.Addr}}" data-form="{{.Form}}" {{if .Selected}}selected{{end}}>{{.Label}} · {{.Addr}}</option>
@@ -136,6 +142,25 @@ document.querySelector('select[name=target]').addEventListener('change', functio
   const form = this.selectedOptions[0].dataset.form;
   if (form) { document.querySelector('select[name=encode]').value = form; }
 });
+
+// Поиск по элементам: на объекте ихтри сотни, и пролистывать список глазами
+// невыносимо. Фильтруем прямо в браузере — список уже здесь, ходить на сервер
+// не за чем.
+const allOptions = Array.from(document.querySelectorAll('#element-select option'));
+function filterElements(query) {
+  const q = query.trim().toLowerCase();
+  const select = document.getElementById('element-select');
+  const selected = select.value;
+  select.innerHTML = '';
+  let shown = 0;
+  for (const opt of allOptions) {
+    if (!q || opt.textContent.toLowerCase().includes(q) || opt.value === selected) {
+      select.appendChild(opt);
+      shown++;
+    }
+  }
+  select.size = (q && shown > 1) ? Math.min(shown, 12) : 1;
+}
 
 // Ненужную половину формы прячем: показывать поля, которые ни на что не
 // влияют, — верный способ заполнить их и потом гадать, почему не работает.
