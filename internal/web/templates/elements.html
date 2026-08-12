@@ -1,0 +1,30 @@
+{{define "content"}}
+<h1>Элементы умного дома</h1>
+<p class="hint">
+  Из logic.xml, который сервер присылает при подключении. Всего {{len .Elements}}.
+  Отдельный путь к файлу настраивать не нужно — список всегда соответствует
+  тому серверу, с которым шлюз работает на самом деле.
+</p>
+
+{{if .Elements}}
+<table>
+  <thead><tr><th>Адрес</th><th>Имя</th><th>Тип</th><th>Форма значения</th><th>Область</th></tr></thead>
+  <tbody>
+  {{range .Elements}}
+    <tr>
+      <td class="mono">{{.Addr}}</td>
+      <td>{{.Name}}</td>
+      <td class="hint">{{.Type}}</td>
+      <td>{{with .Form}}{{if eq . "byte"}}один байт{{else if eq . "sensor"}}датчик 8.8{{else}}{{.}}{{end}}{{else}}—{{end}}</td>
+      <td class="hint">{{.Area}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="empty">
+  Пусто: описание приезжает при подключении к умному дому.
+  Проверьте связь на странице <a href="/">Обзор</a>.
+</p>
+{{end}}
+{{end}}

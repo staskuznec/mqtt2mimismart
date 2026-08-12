@@ -1,12 +1,13 @@
 {{define "content"}}
 <h1>Связки</h1>
 <p class="hint">Что и куда переводит шлюз. Всего {{len .Links}}.</p>
+<p><a href="/links/new"><button type="button">Новая связка</button></a></p>
 
 {{if .Links}}
 <table>
   <thead><tr>
     <th></th><th>Направление</th><th>Топик</th><th>Элемент</th>
-    <th>Форма</th><th>Последнее</th><th style="text-align:right">Ошибок</th>
+    <th>Форма</th><th>Последнее</th><th style="text-align:right">Ошибок</th><th></th>
   </tr></thead>
   <tbody>
   {{range .Links}}
@@ -18,6 +19,17 @@
       <td>{{.Form}}</td>
       <td class="mono">{{.LastValue}}</td>
       <td class="num">{{.Errors}}</td>
+      <td style="white-space:nowrap">
+        <a href="/links/{{.ID}}">править</a>
+        <form method="post" action="/links/{{.ID}}/toggle" style="display:inline">
+          <button type="submit" style="margin:0;padding:2px 8px;background:none;color:var(--accent)">
+            {{if .Enabled}}выключить{{else}}включить{{end}}</button>
+        </form>
+        <form method="post" action="/links/{{.ID}}/delete" style="display:inline"
+              onsubmit="return confirm('Удалить связку?')">
+          <button type="submit" style="margin:0;padding:2px 8px;background:none;color:var(--bad)">удалить</button>
+        </form>
+      </td>
     </tr>
     {{if .LastError}}<tr><td></td><td colspan="6" class="hint">{{.LastError}}</td></tr>{{end}}
   {{end}}
@@ -25,8 +37,9 @@
 </table>
 {{else}}
 <p class="empty">
-  Связок пока нет. Редактор появится следующим шагом; до тех пор их можно
-  завести через API: <code>POST /api/links</code>
+  Связок пока нет. Заведите первую кнопкой выше или нажмите «Связать» рядом с
+  нужным топиком в разделе <a href="/topics">Топики</a> — тогда топик
+  подставится сам.
 </p>
 {{end}}
 {{end}}

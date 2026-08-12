@@ -24,10 +24,16 @@ var templateFS embed.FS
 // оформлением: html/template не умеет переопределять блок в рамках одного
 // набора, поэтому наборов столько же, сколько страниц.
 var pages = map[string]*template.Template{
-	"overview": mustParse("overview.html"),
-	"settings": mustParse("settings.html"),
-	"topics":   mustParse("topics.html"),
-	"links":    mustParse("links.html"),
+	"overview":  mustParse("overview.html"),
+	"settings":  mustParse("settings.html"),
+	"topics":    mustParse("topics.html"),
+	"links":     mustParse("links.html"),
+	"link_form": mustParse("link_form.html"),
+	"elements":  mustParse("elements.html"),
+
+	// Проба возвращается кусочком страницы, поэтому общее оформление ей
+	// не нужно — она подставляется в уже открытую форму.
+	"preview": template.Must(template.ParseFS(templateFS, "templates/preview.html")),
 }
 
 func mustParse(name string) *template.Template {

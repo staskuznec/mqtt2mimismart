@@ -9,7 +9,7 @@
 <table>
   <thead><tr>
     <th>Топик</th><th>Последнее значение</th><th>Вид</th>
-    <th style="text-align:right">Сообщений</th><th>Когда</th>
+    <th style="text-align:right">Сообщений</th><th>Когда</th><th></th>
   </tr></thead>
   <tbody>
   {{range .Topics}}
@@ -19,6 +19,7 @@
       <td>{{.Kind}}{{if .Retained}} · retain{{end}}</td>
       <td class="num">{{.Count}}</td>
       <td class="hint">{{.Ago}}</td>
+      <td><a href="/links/new?topic={{.Topic}}">Связать</a></td>
     </tr>
   {{end}}
   </tbody>

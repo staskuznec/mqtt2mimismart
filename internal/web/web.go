@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/staskuznec/mqtt2mimismart/internal/link"
+	"github.com/staskuznec/mqtt2mimismart/internal/logic"
 	"github.com/staskuznec/mqtt2mimismart/internal/mqtt"
 	"github.com/staskuznec/mqtt2mimismart/internal/shs"
 	"github.com/staskuznec/mqtt2mimismart/internal/store"
@@ -24,10 +25,15 @@ const healthTimeout = 2 * time.Second
 // Status — источники состояния подключений. Поля пустые, пока настройки не
 // заполнены и клиенты не созданы: веб обязан работать и до этого.
 type Status struct {
-	SHS    func() shs.Status
-	MQTT   func() mqtt.Status
-	Topics func() []mqtt.TopicInfo
-	Links  func() map[int64]link.Stats
+	SHS      func() shs.Status
+	MQTT     func() mqtt.Status
+	Topics   func() []mqtt.TopicInfo
+	Links    func() map[int64]link.Stats
+	Elements func() []logic.Element
+
+	// Reload заставляет движок перечитать связки. Вызывается после каждой
+	// правки: иначе изменение вступало бы в силу только после перезапуска.
+	Reload func(context.Context) error
 }
 
 // Handler собирает маршруты веб-интерфейса.
@@ -42,6 +48,13 @@ func Handler(log *slog.Logger, db *store.Store, version string, status Status) h
 	mux.HandleFunc("POST /settings", s.saveSettings)
 	mux.HandleFunc("GET /topics", s.pageTopics)
 	mux.HandleFunc("GET /links", s.pageLinks)
+	mux.HandleFunc("GET /links/new", s.pageLinkForm)
+	mux.HandleFunc("GET /links/{id}", s.pageLinkForm)
+	mux.HandleFunc("POST /links/save", s.saveLink)
+	mux.HandleFunc("POST /links/{id}/toggle", s.toggleLink)
+	mux.HandleFunc("POST /links/{id}/delete", s.deleteLink)
+	mux.HandleFunc("POST /links/preview", s.previewLink)
+	mux.HandleFunc("GET /elements", s.pageElements)
 
 	// Машинный интерфейс: на нём же потом стоит большая панель.
 	mux.HandleFunc("GET /healthz", s.health)

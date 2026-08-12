@@ -1,0 +1,120 @@
+{{define "content"}}
+<h1>{{if .New}}Новая связка{{else}}Связка{{end}}</h1>
+<p class="hint">
+  Одно направление: либо сообщение с шины кладётся в элемент умного дома,
+  либо изменение элемента публикуется в топик.
+</p>
+
+{{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
+
+<form method="post" action="/links/save">
+  <input type="hidden" name="id" value="{{.Link.ID}}">
+
+  <label>Название <span>— для журнала и таблицы</span>
+    <input type="text" name="name" value="{{.Link.Name}}" placeholder="Прихожая, канал 0"></label>
+
+  <label>Направление
+    <select name="direction">
+      <option value="in" {{if eq (printf "%s" .Link.Direction) "in"}}selected{{end}}>шина → умный дом (состояние устройства)</option>
+      <option value="out" {{if eq (printf "%s" .Link.Direction) "out"}}selected{{end}}>умный дом → шина (команда или показание)</option>
+    </select></label>
+
+  <label>Топик
+    <span>— для входящей допускаются «+» и «#», для исходящей нужен точный</span>
+    <input type="text" name="topic" value="{{.Link.Topic}}" required
+           placeholder="shellies/shellyswitch25-4022D8956527/relay/0"></label>
+
+  <label>Элемент умного дома
+    <select name="target" required>
+      <option value="">— выберите —</option>
+      {{range .Elements}}
+        <option value="{{.Addr}}" data-form="{{.Form}}" {{if .Selected}}selected{{end}}>{{.Label}} · {{.Addr}}</option>
+      {{end}}
+    </select></label>
+  {{if not .Elements}}
+    <p class="hint">Список пуст: logic.xml приезжает при подключении к умному дому.
+       Проверьте связь на странице <a href="/">Обзор</a>.</p>
+  {{end}}
+
+  <h2>Для направления «шина → умный дом»</h2>
+  <label>Что взять из сообщения
+    <select name="extract">
+      <option value="raw" {{if eq .Link.Extract "raw"}}selected{{end}}>всю нагрузку целиком</option>
+      <option value="json" {{if eq .Link.Extract "json"}}selected{{end}}>поле из JSON</option>
+    </select></label>
+  <label>Путь в JSON <span>— например relays.0.ison</span>
+    <input type="text" name="extract_path" value="{{.Link.ExtractPath}}"></label>
+
+  <label>Форма значения
+    <span>— лампе, шторам и скриптам нужен один байт, датчику 8.8, остальному текст</span>
+    <select name="encode">
+      <option value="byte" {{if eq .Link.Encode "byte"}}selected{{end}}>один байт</option>
+      <option value="sensor" {{if eq .Link.Encode "sensor"}}selected{{end}}>датчик 8.8</option>
+      <option value="text" {{if eq .Link.Encode "text"}}selected{{end}}>текст</option>
+    </select></label>
+
+  <label>Единица <span>— приписка к тексту, например « Вт»</span>
+    <input type="text" name="unit" value="{{.Link.Unit}}"></label>
+  <label>Знаков после запятой <span>— пусто: без округления</span>
+    <input type="text" name="precision" value="{{if .Link.Precision}}{{.Link.Precision}}{{end}}"></label>
+  <label>Множитель <span>— пусто или 0: без изменения. Ватт-минуты в кВт·ч это 0.0000166667</span>
+    <input type="text" name="scale" value="{{if .Link.Scale}}{{.Link.Scale}}{{end}}"></label>
+  <label>Смещение
+    <input type="text" name="offset" value="{{if .Link.Offset}}{{.Link.Offset}}{{end}}"></label>
+
+  <h2>Для направления «умный дом → шина»</h2>
+  <label>Назначение
+    <select name="kind">
+      <option value="command" {{if eq .Link.Kind "command"}}selected{{end}}>команда устройству</option>
+      <option value="state" {{if eq .Link.Kind "state"}}selected{{end}}>показание наружу</option>
+    </select></label>
+  <label>Как читать элемент
+    <select name="decode">
+      <option value="lamp" {{if eq .Link.Decode "lamp"}}selected{{end}}>лампа: 0xFF нажатие, 1 и 8 включить, 0 и 9 выключить</option>
+      <option value="byte" {{if eq .Link.Decode "byte"}}selected{{end}}>один байт как число</option>
+      <option value="sensor" {{if eq .Link.Decode "sensor"}}selected{{end}}>датчик 8.8</option>
+      <option value="text" {{if eq .Link.Decode "text"}}selected{{end}}>текст</option>
+    </select></label>
+  <label>QoS
+    <input type="text" name="qos" value="{{.Link.QoS}}" style="max-width:80px"></label>
+  <label><input type="checkbox" name="retain" {{if .Link.Retain}}checked{{end}}>
+    сохранять на брокере <span>— только для показаний; на команде заставит устройство сработать при включении</span></label>
+
+  <h2>Общее</h2>
+  <label>Таблица значений <span>— по строке на пару, «ключ = значение»</span>
+    <textarea name="values" rows="5" style="width:100%;max-width:460px;font-family:ui-monospace,monospace"
+              placeholder="on = 1&#10;off = 0&#10;overpower = 1">{{.ValuesText}}</textarea></label>
+
+  <label><input type="checkbox" name="only_changed" {{if .Link.OnlyChanged}}checked{{end}}>
+    отсеивать повторы <span>— без этого одно и то же значение уходит на каждом опросе</span></label>
+  <label><input type="checkbox" name="enabled" {{if .Link.Enabled}}checked{{end}}> включена</label>
+
+  <h2>Проба</h2>
+  <p class="hint">
+    Считает тот же код, который потом и отправит значение, — расхождение
+    между пробой и работой невозможно.
+  </p>
+  <label>Пример сообщения
+    <input type="text" name="sample" value="on" form="preview-form"></label>
+  <button type="button"
+          onclick="preview(this.form)">Проверить</button>
+  <div id="preview" style="margin-top:14px"></div>
+
+  <div><button type="submit">Сохранить</button></div>
+</form>
+
+<script>
+// Проба уходит на сервер той же формой: значение считает Go, а не браузер.
+async function preview(form) {
+  const data = new FormData(form);
+  const res = await fetch('/links/preview', {method: 'POST', body: new URLSearchParams(data)});
+  document.getElementById('preview').innerHTML = await res.text();
+}
+// Подсказка формы по типу элемента: у ламп и штор один байт, и перепутать
+// это с датчиком — самая дорогая ошибка в проекте.
+document.querySelector('select[name=target]').addEventListener('change', function () {
+  const form = this.selectedOptions[0].dataset.form;
+  if (form) { document.querySelector('select[name=encode]').value = form; }
+});
+</script>
+{{end}}

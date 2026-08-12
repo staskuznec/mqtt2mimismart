@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/staskuznec/mqtt2mimismart/internal/link"
+	"github.com/staskuznec/mqtt2mimismart/internal/logic"
 	"github.com/staskuznec/mqtt2mimismart/internal/mqtt"
 	"github.com/staskuznec/mqtt2mimismart/internal/shs"
 	"github.com/staskuznec/mqtt2mimismart/internal/store"
@@ -36,6 +37,44 @@ type App struct {
 	mqtt   *mqtt.Client
 	shs    *shs.Client
 	engine *link.Engine
+
+	// Разобранный logic.xml. Приезжает в рукопожатии и меняется редко, а
+	// разбирать три сотни элементов на каждой отрисовке страницы незачем.
+	logicMu    sync.Mutex
+	logicHouse logic.House
+	logicSize  int
+}
+
+// Elements отдаёт элементы умного дома из logic.xml.
+//
+// Описание приходит от сервера при подключении, поэтому отдельный путь к файлу
+// настраивать не нужно: список всегда соответствует тому серверу, с которым мы
+// на самом деле работаем.
+func (a *App) Elements() []logic.Element {
+	if a.shs == nil {
+		return nil
+	}
+	raw := a.shs.Logic()
+	if len(raw) == 0 {
+		return nil
+	}
+
+	a.logicMu.Lock()
+	defer a.logicMu.Unlock()
+
+	// Пересобираем, только когда описание сменилось: длина меняется при любой
+	// правке логики, а сравнивать целиком дороже, чем разбирать.
+	if a.logicSize != len(raw) {
+		house, err := logic.Parse(raw)
+		if err != nil {
+			a.log.Error("разбор logic.xml", "err", err)
+			return a.logicHouse.Elements
+		}
+		a.logicHouse, a.logicSize = house, len(raw)
+		a.log.Info("логика умного дома разобрана",
+			"элементов", len(house.Elements), "областей", len(house.Areas()))
+	}
+	return a.logicHouse.Elements
 }
 
 // New собирает демон. Клиенты создаются только при заполненных настройках:
@@ -252,6 +291,8 @@ func (a *App) serve(ctx context.Context) error {
 	if a.engine != nil {
 		status.Links = a.engine.Stats
 	}
+	status.Elements = a.Elements
+	status.Reload = a.ReloadLinks
 
 	srv := &http.Server{
 		Addr:    a.addr,

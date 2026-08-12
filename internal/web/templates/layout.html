@@ -47,6 +47,11 @@
   .msg.bad { border-color: var(--bad); color: var(--bad); }
   label { display: block; margin: 14px 0 4px; font-weight: 600; font-size: 14px; }
   label span { font-weight: 400; color: var(--muted); }
+  select, textarea {
+    padding: 8px 10px; font: inherit; max-width: 460px; width: 100%;
+    background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
+  }
+  input[type=checkbox] { margin-right: 6px; }
   input[type=text], input[type=password] {
     width: 100%; max-width: 460px; padding: 8px 10px; font: inherit;
     background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
@@ -63,6 +68,7 @@
     <a href="/" {{if eq .Nav "overview"}}class="active"{{end}}>Обзор</a>
     <a href="/topics" {{if eq .Nav "topics"}}class="active"{{end}}>Топики</a>
     <a href="/links" {{if eq .Nav "links"}}class="active"{{end}}>Связки</a>
+    <a href="/elements" {{if eq .Nav "elements"}}class="active"{{end}}>Элементы</a>
     <a href="/settings" {{if eq .Nav "settings"}}class="active"{{end}}>Настройки</a>
   </nav>
 </header>

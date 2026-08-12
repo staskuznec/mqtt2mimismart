@@ -1,0 +1,17 @@
+{{define "layout"}}{{if .Error}}
+  <div class="msg bad">{{.Error}}</div>
+{{else}}
+  <div class="card">
+    <table>
+      <tr><th>Значение</th><td class="mono">{{.Value}}</td></tr>
+      {{if .Hex}}<tr><th>Байты на проводе</th><td class="mono">{{.Hex}}</td></tr>{{end}}
+      <tr><th>Форма</th><td>{{.Kind}}</td></tr>
+    </table>
+    {{if .Clamped}}
+      <p class="hint" style="color:var(--warn)">
+        Значение не поместилось в диапазон и было обрезано — задайте множитель
+        или выберите текстовую форму.
+      </p>
+    {{end}}
+  </div>
+{{end}}{{end}}
