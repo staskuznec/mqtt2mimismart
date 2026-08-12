@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.34.0
+	github.com/staskuznec/shClientMimismart v0.3.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.56.0
 )
