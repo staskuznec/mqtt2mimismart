@@ -19,7 +19,7 @@ var ErrNotFound = errors.New("store: запись не найдена")
 // новой миграции.
 const linkColumns = `id, device_id, name, enabled, direction, topic, qos, retain,
 	extract, extract_path, values_json, scale, offset_value,
-	target_id, target_subid, encode, decode, unit, precision, only_changed`
+	target_id, target_subid, encode, decode, unit, precision, only_changed, kind`
 
 // Links читает все связки, сначала включённые, потом по адресу элемента.
 func (s *Store) Links(ctx context.Context) ([]link.Link, error) {
@@ -80,6 +80,7 @@ func (s *Store) LinksByDevice(ctx context.Context, deviceID int64) ([]link.Link,
 // попадать в базу — иначе движок будет спотыкаться о неё на каждом сообщении,
 // а в вебе она будет выглядеть настроенной.
 func (s *Store) CreateLink(ctx context.Context, l link.Link) (int64, error) {
+	l = l.Normalize()
 	if err := l.Validate(); err != nil {
 		return 0, err
 	}
@@ -93,12 +94,12 @@ func (s *Store) CreateLink(ctx context.Context, l link.Link) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO links (device_id, name, enabled, direction, topic, qos, retain,
 			extract, extract_path, values_json, scale, offset_value,
-			target_id, target_subid, encode, decode, unit, precision, only_changed,
+			target_id, target_subid, encode, decode, unit, precision, only_changed, kind,
 			created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		nullableID(l.DeviceID), l.Name, l.Enabled, string(l.Direction), l.Topic, l.QoS, l.Retain,
 		l.Extract, l.ExtractPath, values, l.Scale, l.Offset,
-		l.TargetID, l.TargetSubID, l.Encode, l.Decode, l.Unit, l.Precision, l.OnlyChanged,
+		l.TargetID, l.TargetSubID, l.Encode, l.Decode, l.Unit, l.Precision, l.OnlyChanged, l.Kind,
 		now, now)
 	if err != nil {
 		return 0, fmt.Errorf("store: сохранение связки: %w", err)
@@ -113,6 +114,7 @@ func (s *Store) CreateLink(ctx context.Context, l link.Link) (int64, error) {
 
 // UpdateLink перезаписывает связку целиком.
 func (s *Store) UpdateLink(ctx context.Context, l link.Link) error {
+	l = l.Normalize()
 	if err := l.Validate(); err != nil {
 		return err
 	}
@@ -126,13 +128,13 @@ func (s *Store) UpdateLink(ctx context.Context, l link.Link) error {
 		UPDATE links SET device_id = ?, name = ?, enabled = ?, direction = ?, topic = ?,
 			qos = ?, retain = ?, extract = ?, extract_path = ?, values_json = ?,
 			scale = ?, offset_value = ?, target_id = ?, target_subid = ?,
-			encode = ?, decode = ?, unit = ?, precision = ?, only_changed = ?,
+			encode = ?, decode = ?, unit = ?, precision = ?, only_changed = ?, kind = ?,
 			updated_at = ?
 		WHERE id = ?`,
 		nullableID(l.DeviceID), l.Name, l.Enabled, string(l.Direction), l.Topic,
 		l.QoS, l.Retain, l.Extract, l.ExtractPath, values,
 		l.Scale, l.Offset, l.TargetID, l.TargetSubID,
-		l.Encode, l.Decode, l.Unit, l.Precision, l.OnlyChanged,
+		l.Encode, l.Decode, l.Unit, l.Precision, l.OnlyChanged, l.Kind,
 		time.Now().Unix(), l.ID)
 	if err != nil {
 		return fmt.Errorf("store: обновление связки: %w", err)
@@ -178,7 +180,7 @@ func scanLink(row scanner) (link.Link, error) {
 
 	err := row.Scan(&l.ID, &deviceID, &l.Name, &l.Enabled, &direction, &l.Topic, &l.QoS, &l.Retain,
 		&l.Extract, &l.ExtractPath, &values, &l.Scale, &l.Offset,
-		&l.TargetID, &l.TargetSubID, &l.Encode, &l.Decode, &l.Unit, &precision, &l.OnlyChanged)
+		&l.TargetID, &l.TargetSubID, &l.Encode, &l.Decode, &l.Unit, &precision, &l.OnlyChanged, &l.Kind)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return link.Link{}, err

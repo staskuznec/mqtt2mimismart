@@ -306,3 +306,66 @@ func TestLinksByDevice(t *testing.T) {
 		t.Errorf("у устройства %d связок, ожидалась одна", len(links))
 	}
 }
+
+// Назначение связки должно переживать обход через базу: от него зависит,
+// допустим ли retain.
+func TestLinkKindRoundTrip(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	id, err := s.CreateLink(ctx, link.Link{
+		Enabled: true, Direction: link.Out, Kind: link.KindState,
+		Topic: "mimismart/прихожая/температура", Decode: link.DecodeSensor,
+		Retain: true, TargetID: 542, TargetSubID: 16,
+	})
+	if err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	got, err := s.Link(ctx, id)
+	if err != nil {
+		t.Fatalf("Link: %v", err)
+	}
+	if got.Kind != link.KindState || !got.Retain {
+		t.Errorf("связка вернулась как %+v", got)
+	}
+}
+
+// Исходящая связка без явного назначения — команда: это строже по проверкам,
+// и retain у неё запрещён.
+func TestLinkKindDefaultsToCommand(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	id, err := s.CreateLink(ctx, link.Link{
+		Enabled: true, Direction: link.Out,
+		Topic: "shellies/a/relay/0/command", Decode: link.DecodeLamp,
+		TargetID: 563, TargetSubID: 57,
+	})
+	if err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+	got, _ := s.Link(ctx, id)
+	if got.Kind != link.KindCommand {
+		t.Errorf("назначение = %q, ожидалось %q", got.Kind, link.KindCommand)
+	}
+}
+
+// У входящей связки назначения нет вовсе: она ничего не публикует, и
+// различать команду с показанием ей незачем.
+func TestIncomingLinkHasNoKind(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	id, err := s.CreateLink(ctx, sampleIn())
+	if err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+	got, _ := s.Link(ctx, id)
+	if got.Kind != "" {
+		t.Errorf("назначение = %q, у входящей связки его быть не должно", got.Kind)
+	}
+	if got.Extract != link.ExtractRaw {
+		t.Errorf("способ извлечения = %q, ожидался %q", got.Extract, link.ExtractRaw)
+	}
+}

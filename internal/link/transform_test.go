@@ -352,3 +352,41 @@ func TestTitle(t *testing.T) {
 		t.Errorf("Title() = %q, ожидалось имя связки", got)
 	}
 }
+
+// Показание датчика наружу — не команда. Сохранённое значение здесь нужно:
+// без него новый подписчик висит с пустотой до следующего изменения, а
+// датчик может не меняться часами.
+func TestValidateStateLinkAllowsRetain(t *testing.T) {
+	l := Link{
+		Direction: Out,
+		Kind:      KindState,
+		Topic:     "mimismart/прихожая/температура",
+		Decode:    DecodeSensor,
+		Retain:    true,
+	}
+	if err := l.Validate(); err != nil {
+		t.Errorf("показание с retain отвергнуто: %v", err)
+	}
+}
+
+// А вот команда с retain по-прежнему недопустима: брокер отдаст её устройству
+// при следующем подключении, и реле щёлкнет само.
+func TestValidateCommandStillRejectsRetain(t *testing.T) {
+	for _, kind := range []string{"", KindCommand} {
+		l := Link{
+			Direction: Out, Kind: kind,
+			Topic:  "shellies/a/relay/0/command",
+			Decode: DecodeLamp, Retain: true,
+		}
+		if err := l.Validate(); err == nil {
+			t.Errorf("команда с retain принята при kind=%q", kind)
+		}
+	}
+}
+
+func TestValidateUnknownKind(t *testing.T) {
+	l := Link{Direction: Out, Kind: "нечто", Topic: "a/b", Decode: DecodeText}
+	if err := l.Validate(); err == nil {
+		t.Error("неизвестное назначение связки принято")
+	}
+}
