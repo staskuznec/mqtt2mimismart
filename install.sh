@@ -572,6 +572,59 @@ fi
 cp "$TMP/gateway" "$BIN_DIR/mqtt2mimismart.new"
 mv -f "$BIN_DIR/mqtt2mimismart.new" "$BIN_DIR/mqtt2mimismart"
 
+# upgrade_unit дописывает в существующий юнит то, чего в нём ещё нет.
+#
+# Целиком не переписываем: человек мог поправить там пути, пользователя или
+# флаги, и снести это молча нельзя. Дописываем ровно недостающее и только с
+# резервной копией рядом.
+upgrade_unit() {
+  UNIT="/etc/systemd/system/$SERVICE.service"
+  [ -f "$UNIT" ] || return 0
+
+  NEEDS=""
+  grep -q -- "--profiles" "$UNIT" || NEEDS="profiles"
+  if [ "$PROXY" = yes ] && ! grep -q -- "--base-path" "$UNIT"; then
+    NEEDS="$NEEDS base-path"
+  fi
+  [ -n "$NEEDS" ] || return 0
+
+  cp "$UNIT" "$UNIT.before-update" 2>/dev/null || true
+
+  # Через awk, а не sed -i: у последнего разный синтаксис в GNU и BSD, а
+  # испорченный юнит означает службу, которая не поднимется.
+  awk -v prof="$PROFILES_DIR" -v base="$BASE_PATH" -v proxy="$PROXY" -v state="$STATE_DIR" '
+    /^ExecStart=/ {
+      if ($0 !~ /--profiles/) {
+        sub(/--log-level/, "--profiles " prof " --log-level")
+        if ($0 !~ /--profiles/) { $0 = $0 " --profiles " prof }
+      }
+      if (proxy == "yes" && base != "" && $0 !~ /--base-path/) {
+        sub(/--log-level/, "--base-path " base " --log-level")
+      }
+      print; next
+    }
+    /^ReadWritePaths=/ {
+      if ($0 !~ prof) { $0 = $0 " " prof }
+      print; seen = 1; next
+    }
+    { print }
+    END {
+      if (!seen) {
+        # Строки не было вовсе: без неё ProtectSystem=strict закроет запись.
+        print "ReadWritePaths=" state " " prof
+      }
+    }
+  ' "$UNIT" > "$UNIT.new" 2>/dev/null
+
+  if [ -s "$UNIT.new" ] && grep -q "^ExecStart=" "$UNIT.new"; then
+    mv -f "$UNIT.new" "$UNIT"
+    say "Служба дописана: $NEEDS. Прежний юнит рядом, $UNIT.before-update"
+  else
+    rm -f "$UNIT.new"
+    say "Не удалось дописать юнит. Добавьте в ExecStart: --profiles $PROFILES_DIR"
+  fi
+}
+
 # --- служба ----------------------------------------------------------------
 if [ ! -f "/etc/systemd/system/$SERVICE.service" ]; then
   say "Заводим службу systemd…"
@@ -611,13 +664,10 @@ UNIT
   systemctl daemon-reload
   systemctl enable "$SERVICE"
 else
-  # Юнит уже есть — не переписываем: в нём могли поправить пути или флаги.
-  if [ "$PROXY" = yes ] && ! grep -q -- "--base-path" "/etc/systemd/system/$SERVICE.service" 2>/dev/null; then
-    say ""
-    say "Служба заведена раньше и запускается без --base-path $BASE_PATH."
-    say "Чтобы шлюз заработал за прокси, добавьте флаг в ExecStart:"
-    say "    systemctl edit --full $SERVICE"
-  fi
+  # Юнит уже есть — целиком не переписываем: в нём могли поправить пути или
+  # флаги. Но про новые каталоги он знать обязан, иначе после обновления шлюз
+  # положит профили не туда и не сможет их читать.
+  upgrade_unit
   systemctl daemon-reload
 fi
 
