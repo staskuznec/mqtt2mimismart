@@ -1,0 +1,70 @@
+{
+  "name": "Shelly Flood — датчик протечки",
+  "model": "SHWT-1",
+  "note": "Батарейный датчик, публикует при пробуждении и при срабатывании. Признак протечки уходит одним байтом — заводите его на однобайтовый элемент, а не на датчик.",
+  "roles": [
+    {
+      "key": "flood",
+      "title": "Протечка",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "required": true,
+      "hint": "однобайтовый элемент: 1 — вода обнаружена"
+    },
+    {
+      "key": "temp",
+      "title": "Температура, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "battery",
+      "title": "Заряд батареи, %",
+      "form": "sensor",
+      "types": [
+        "humidity-sensor",
+        "percent-sensor",
+        "virtual",
+        "virtual"
+      ]
+    }
+  ],
+  "links": [
+    {
+      "name": "Протечка",
+      "direction": "in",
+      "role": "flood",
+      "topic": "{{prefix}}/flood",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      },
+      "only_changed": false
+    },
+    {
+      "name": "Температура",
+      "direction": "in",
+      "role": "temp",
+      "topic": "{{prefix}}/temperature",
+      "encode": "sensor",
+      "only_changed": false
+    },
+    {
+      "name": "Заряд батареи",
+      "direction": "in",
+      "role": "battery",
+      "topic": "{{prefix}}/battery",
+      "encode": "sensor",
+      "only_changed": false
+    }
+  ]
+}

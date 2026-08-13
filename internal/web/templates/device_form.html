@@ -44,12 +44,14 @@
       и связок под них не появится.
     </p>
 
-    {{range .Selected.Roles}}
+    {{range .Roles}}
       <label>{{.Title}}{{if .Required}} <span style="color:var(--bad)">— обязательно</span>{{end}}
-        {{with .Hint}}<span>— {{.}}</span>{{end}}
+        <span>{{with .Hint}}{{.}}{{end}}{{if .Narrowed}}
+          {{if .Hint}} · {{end}}показаны только подходящие по типу ({{len .Elements}}
+          из {{len $.Elements}}){{end}}</span>
         <select name="role_{{.Key}}" {{if .Required}}required{{end}}>
           <option value="">— не нужно —</option>
-          {{range $.Elements}}<option value="{{.Addr}}">{{.Label}} · {{.Addr}}</option>{{end}}
+          {{range .Elements}}<option value="{{.Addr}}">{{.Label}} · {{.Addr}}</option>{{end}}
         </select></label>
     {{end}}
 

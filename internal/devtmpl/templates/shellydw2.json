@@ -1,0 +1,109 @@
+{
+  "name": "Shelly Door/Window 2 — геркон",
+  "model": "SHDW-2",
+  "note": "Батарейный датчик открытия с освещённостью, наклоном и вибрацией. Публикует при пробуждении и при срабатывании.",
+  "roles": [
+    {
+      "key": "state",
+      "title": "Открыто / закрыто",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "required": true
+    },
+    {
+      "key": "lux",
+      "title": "Освещённость",
+      "form": "sensor",
+      "types": [
+        "illumination-sensor",
+        "percent-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "tilt",
+      "title": "Наклон, градусы",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "vibration",
+      "title": "Вибрация",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ]
+    },
+    {
+      "key": "battery",
+      "title": "Заряд батареи, %",
+      "form": "sensor",
+      "types": [
+        "humidity-sensor",
+        "percent-sensor",
+        "virtual",
+        "virtual"
+      ]
+    }
+  ],
+  "links": [
+    {
+      "name": "Открытие",
+      "direction": "in",
+      "role": "state",
+      "topic": "{{prefix}}/sensor/state",
+      "encode": "byte",
+      "values": {
+        "open": "1",
+        "close": "0"
+      },
+      "only_changed": false
+    },
+    {
+      "name": "Освещённость",
+      "direction": "in",
+      "role": "lux",
+      "topic": "{{prefix}}/sensor/lux",
+      "encode": "sensor",
+      "only_changed": false
+    },
+    {
+      "name": "Наклон",
+      "direction": "in",
+      "role": "tilt",
+      "topic": "{{prefix}}/sensor/tilt",
+      "encode": "sensor",
+      "only_changed": false
+    },
+    {
+      "name": "Вибрация",
+      "direction": "in",
+      "role": "vibration",
+      "topic": "{{prefix}}/sensor/vibration",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      },
+      "only_changed": false
+    },
+    {
+      "name": "Заряд батареи",
+      "direction": "in",
+      "role": "battery",
+      "topic": "{{prefix}}/sensor/battery",
+      "encode": "sensor",
+      "only_changed": false
+    }
+  ]
+}

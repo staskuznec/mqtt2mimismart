@@ -1,0 +1,187 @@
+{
+  "name": "Shelly Dimmer 1/2 — диммер",
+  "model": "SHDM-2",
+  "note": "Включение и выключение работают через команду в формате JSON. ЯРКОСТЬЮ ПОКА УПРАВЛЯТЬ НЕЛЬЗЯ: устройство ждёт {\"brightness\":75}, а таблица значений подставить число в шаблон нагрузки не умеет — это ближайшая доработка. Показания яркости при этом читаются и в умный дом приходят.",
+  "roles": [
+    {
+      "key": "light",
+      "title": "Светильник — включение",
+      "form": "byte",
+      "types": [
+        "dimer-lamp",
+        "lamp"
+      ],
+      "required": true
+    },
+    {
+      "key": "brightness",
+      "title": "Яркость, 0–100 (только чтение)",
+      "form": "byte",
+      "types": [
+        "dimer-lamp",
+        "lamp"
+      ]
+    },
+    {
+      "key": "power0",
+      "title": "Мощность, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "energy0",
+      "title": "Энергия, кВт·ч",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "input0",
+      "title": "Вход 1",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ]
+    },
+    {
+      "key": "input1",
+      "title": "Вход 2",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ]
+    },
+    {
+      "key": "temp",
+      "title": "Температура устройства, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "overtemp",
+      "title": "Признак перегрева",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "по признаку присутствия брокера: пропало питание — элемент погаснет"
+    }
+  ],
+  "links": [
+    {
+      "name": "Состояние светильника",
+      "direction": "in",
+      "role": "light",
+      "pair": "light",
+      "topic": "{{prefix}}/light/0",
+      "encode": "byte",
+      "values": {
+        "on": "1",
+        "off": "0"
+      }
+    },
+    {
+      "name": "Команда светильнику",
+      "direction": "out",
+      "role": "light",
+      "pair": "light",
+      "topic": "{{prefix}}/light/0/set",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "{\"turn\":\"on\"}",
+        "off": "{\"turn\":\"off\"}",
+        "toggle": "{\"turn\":\"toggle\"}"
+      }
+    },
+    {
+      "name": "Яркость",
+      "direction": "in",
+      "role": "brightness",
+      "topic": "{{prefix}}/light/0/brightness",
+      "encode": "byte"
+    },
+    {
+      "name": "Мощность",
+      "direction": "in",
+      "role": "power0",
+      "topic": "{{prefix}}/light/0/power",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 1
+    },
+    {
+      "name": "Энергия",
+      "direction": "in",
+      "role": "energy0",
+      "topic": "{{prefix}}/light/0/energy",
+      "encode": "text",
+      "unit": " кВт·ч",
+      "precision": 2,
+      "scale": 1.6666666666666667e-05
+    },
+    {
+      "name": "Вход 1",
+      "direction": "in",
+      "role": "input0",
+      "topic": "{{prefix}}/input/0",
+      "encode": "byte"
+    },
+    {
+      "name": "Вход 2",
+      "direction": "in",
+      "role": "input1",
+      "topic": "{{prefix}}/input/1",
+      "encode": "byte"
+    },
+    {
+      "name": "Температура устройства",
+      "direction": "in",
+      "role": "temp",
+      "topic": "{{prefix}}/temperature",
+      "encode": "sensor"
+    },
+    {
+      "name": "Перегрев",
+      "direction": "in",
+      "role": "overtemp",
+      "topic": "{{prefix}}/overtemperature",
+      "encode": "byte"
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/online",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    }
+  ]
+}

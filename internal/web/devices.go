@@ -61,6 +61,17 @@ type deviceFormData struct {
 	Prefix   string
 	Prefixes []prefixOption // что видно на шине
 	Elements []elementOption
+
+	// Roles — роли шаблона вместе с подходящими им элементами: список сужен
+	// по типам, чтобы не искать лампу среди трёх сотен строк.
+	Roles []roleOption
+}
+
+// roleOption — роль с уже отобранными под неё элементами.
+type roleOption struct {
+	devtmpl.Role
+	Elements []elementOption
+	Narrowed bool // список сужен по типу, есть что показать целиком
 }
 
 // prefixOption — предполагаемый префикс устройства, собранный из снифера.
@@ -92,8 +103,35 @@ func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.Elements = s.elementOptions("")
+	data.Roles = s.roleOptions(data.Selected, data.Elements)
 
 	s.render(w, "device_form", data)
+}
+
+// roleOptions сужает список элементов под каждую роль.
+//
+// Роль знает, какие типы ей годятся: под канал реле нужна лампа, под
+// температуру — датчик. Показывать при этом все три сотни элементов дома
+// значит заставлять искать глазами и ошибаться.
+func (s *server) roleOptions(t devtmpl.Template, all []elementOption) []roleOption {
+	out := make([]roleOption, 0, len(t.Roles))
+	for _, role := range t.Roles {
+		opt := roleOption{Role: role}
+		for _, e := range all {
+			if role.Accepts(e.Type) {
+				opt.Elements = append(opt.Elements, e)
+			}
+		}
+		// Если под роль не нашлось ничего, показываем всё: пустой список —
+		// тупик, а неточный тип в logic.xml встречается сплошь и рядом.
+		if len(opt.Elements) == 0 {
+			opt.Elements = all
+		} else {
+			opt.Narrowed = len(opt.Elements) < len(all)
+		}
+		out = append(out, opt)
+	}
+	return out
 }
 
 // prefixOptions собирает предполагаемые префиксы устройств из того, что реально
@@ -156,6 +194,7 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 		data.Templates, _ = s.db.Templates(r.Context())
 		if t, err := s.db.Template(r.Context(), key); err == nil {
 			data.Selected, data.HasChoice = t, true
+			data.Roles = s.roleOptions(t, data.Elements)
 		}
 		s.render(w, "device_form", data)
 	}

@@ -1,0 +1,87 @@
+{
+  "name": "Shelly 1 — реле без измерения",
+  "model": "SHSW-1",
+  "note": "Один канал, измерения нет вовсе. Вход SW публикуется только для чтения: физические выключатели обычно заведены в умный дом напрямую.",
+  "roles": [
+    {
+      "key": "ch0",
+      "title": "Канал — свет или нагрузка",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ],
+      "required": true,
+      "hint": "состояние приходит с устройства, нажатие уходит командой"
+    },
+    {
+      "key": "input0",
+      "title": "Вход SW — положение клеммы",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "по признаку присутствия брокера: пропало питание — элемент погаснет"
+    }
+  ],
+  "links": [
+    {
+      "name": "Канал 0 — состояние",
+      "direction": "in",
+      "role": "ch0",
+      "pair": "ch0",
+      "topic": "{{prefix}}/relay/0",
+      "encode": "byte",
+      "values": {
+        "on": "1",
+        "off": "0",
+        "overpower": "1"
+      }
+    },
+    {
+      "name": "Канал 0 — команда",
+      "direction": "out",
+      "role": "ch0",
+      "pair": "ch0",
+      "topic": "{{prefix}}/relay/0/command",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "on",
+        "off": "off",
+        "toggle": "toggle"
+      }
+    },
+    {
+      "name": "Вход SW",
+      "direction": "in",
+      "role": "input0",
+      "topic": "{{prefix}}/input/0",
+      "encode": "byte"
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/online",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    }
+  ]
+}

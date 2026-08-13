@@ -50,6 +50,25 @@ type Role struct {
 	Form     string `json:"form"`     // какая форма значения ожидается
 	Hint     string `json:"hint"`     // подсказка, какой элемент подходит
 	Required bool   `json:"required"` // без него шаблон не применить
+
+	// Types — типы элементов умного дома, которые сюда годятся: "lamp",
+	// "temperature-sensor" и прочие из logic.xml. Список сужает выбор в форме
+	// до подходящих, чтобы не искать лампу среди трёх сотен строк и не
+	// назначить показание на выключатель. Пусто — годится что угодно.
+	Types []string `json:"types,omitempty"`
+}
+
+// Accepts сообщает, годится ли элемент такого типа под роль.
+func (r Role) Accepts(elementType string) bool {
+	if len(r.Types) == 0 {
+		return true
+	}
+	for _, t := range r.Types {
+		if t == elementType {
+			return true
+		}
+	}
+	return false
 }
 
 // LinkSpec — описание одной связки в шаблоне.

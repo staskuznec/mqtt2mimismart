@@ -1,0 +1,104 @@
+{
+  "name": "Shelly Button1 — кнопка",
+  "model": "SHBTN-2",
+  "note": "Батарейная кнопка. Нажатие приходит в JSON: одиночное S, двойное SS, тройное SSS, длинное L. Каждое ведёт на свой элемент — заводите скрипты или лампы под нужные вам события.",
+  "roles": [
+    {
+      "key": "single",
+      "title": "Одиночное нажатие",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ],
+      "required": true
+    },
+    {
+      "key": "double",
+      "title": "Двойное нажатие",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ]
+    },
+    {
+      "key": "long",
+      "title": "Длинное нажатие",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ]
+    },
+    {
+      "key": "battery",
+      "title": "Заряд батареи, %",
+      "form": "sensor",
+      "types": [
+        "humidity-sensor",
+        "percent-sensor",
+        "virtual",
+        "virtual"
+      ]
+    }
+  ],
+  "links": [
+    {
+      "name": "Одиночное нажатие",
+      "direction": "in",
+      "role": "single",
+      "topic": "{{prefix}}/input_event/0",
+      "extract": "json",
+      "extract_path": "event",
+      "encode": "byte",
+      "values": {
+        "S": "1",
+        "SS": "0",
+        "SSS": "0",
+        "L": "0"
+      },
+      "only_changed": false
+    },
+    {
+      "name": "Двойное нажатие",
+      "direction": "in",
+      "role": "double",
+      "topic": "{{prefix}}/input_event/0",
+      "extract": "json",
+      "extract_path": "event",
+      "encode": "byte",
+      "values": {
+        "S": "0",
+        "SS": "1",
+        "SSS": "0",
+        "L": "0"
+      },
+      "only_changed": false
+    },
+    {
+      "name": "Длинное нажатие",
+      "direction": "in",
+      "role": "long",
+      "topic": "{{prefix}}/input_event/0",
+      "extract": "json",
+      "extract_path": "event",
+      "encode": "byte",
+      "values": {
+        "S": "0",
+        "SS": "0",
+        "SSS": "0",
+        "L": "1"
+      },
+      "only_changed": false
+    },
+    {
+      "name": "Заряд батареи",
+      "direction": "in",
+      "role": "battery",
+      "topic": "{{prefix}}/battery",
+      "encode": "sensor",
+      "only_changed": false
+    }
+  ]
+}

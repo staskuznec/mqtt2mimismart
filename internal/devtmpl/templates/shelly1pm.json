@@ -1,0 +1,156 @@
+{
+  "name": "Shelly 1PM — реле с измерением",
+  "model": "SHSW-PM",
+  "note": "Один канал плюс мощность, энергия и температура. Энергия в ватт-минутах, множитель до киловатт-часов уже задан.",
+  "roles": [
+    {
+      "key": "ch0",
+      "title": "Канал — свет или нагрузка",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ],
+      "required": true
+    },
+    {
+      "key": "power0",
+      "title": "Мощность, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "текстовый элемент: ватты не помещаются в датчик"
+    },
+    {
+      "key": "energy0",
+      "title": "Энергия, кВт·ч",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "input0",
+      "title": "Вход SW — положение клеммы",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ]
+    },
+    {
+      "key": "temp",
+      "title": "Температура устройства, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "overtemp",
+      "title": "Признак перегрева",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "по признаку присутствия брокера: пропало питание — элемент погаснет"
+    }
+  ],
+  "links": [
+    {
+      "name": "Канал 0 — состояние",
+      "direction": "in",
+      "role": "ch0",
+      "pair": "ch0",
+      "topic": "{{prefix}}/relay/0",
+      "encode": "byte",
+      "values": {
+        "on": "1",
+        "off": "0",
+        "overpower": "1"
+      }
+    },
+    {
+      "name": "Канал 0 — команда",
+      "direction": "out",
+      "role": "ch0",
+      "pair": "ch0",
+      "topic": "{{prefix}}/relay/0/command",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "on",
+        "off": "off",
+        "toggle": "toggle"
+      }
+    },
+    {
+      "name": "Мощность канала 0",
+      "direction": "in",
+      "role": "power0",
+      "topic": "{{prefix}}/relay/0/power",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 1
+    },
+    {
+      "name": "Энергия канала 0",
+      "direction": "in",
+      "role": "energy0",
+      "topic": "{{prefix}}/relay/0/energy",
+      "encode": "text",
+      "unit": " кВт·ч",
+      "precision": 2,
+      "scale": 1.6666666666666667e-05
+    },
+    {
+      "name": "Вход SW",
+      "direction": "in",
+      "role": "input0",
+      "topic": "{{prefix}}/input/0",
+      "encode": "byte"
+    },
+    {
+      "name": "Температура устройства",
+      "direction": "in",
+      "role": "temp",
+      "topic": "{{prefix}}/temperature",
+      "encode": "sensor"
+    },
+    {
+      "name": "Перегрев",
+      "direction": "in",
+      "role": "overtemp",
+      "topic": "{{prefix}}/overtemperature",
+      "encode": "byte"
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/online",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    }
+  ]
+}

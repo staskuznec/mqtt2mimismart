@@ -42,7 +42,9 @@ type linkFormData struct {
 type elementOption struct {
 	Addr     string
 	Label    string // «Прихожая → Свет (lamp)»
+	Type     string // из logic.xml: lamp, temperature-sensor и прочие
 	Form     string // подсказка формы значения по типу
+	Area     string
 	Selected bool
 }
 
@@ -158,7 +160,9 @@ func (s *server) elementOptions(selected string) []elementOption {
 		out = append(out, elementOption{
 			Addr:     e.Addr(),
 			Label:    label,
+			Type:     e.Type,
 			Form:     e.Form(),
+			Area:     e.Area,
 			Selected: e.Addr() == selected,
 		})
 	}
