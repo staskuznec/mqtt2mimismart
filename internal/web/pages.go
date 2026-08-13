@@ -86,6 +86,7 @@ type overviewData struct {
 	SHSDot     string
 	Links      linksSummary
 	Update     *update.Info
+	Checked    string // сколько прошло с последней проверки обновлений
 }
 
 type linksSummary struct {
@@ -134,8 +135,15 @@ func (s *server) pageOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.status.Update != nil {
+		// Освежаем в стороне: страница откроется сразу, а сведения подтянутся
+		// к следующему заходу. Иначе после суток работы шлюз показывал бы
+		// вчерашний ответ и «новых версий нет».
+		if s.status.CheckUpdates != nil {
+			s.status.CheckUpdates()
+		}
 		info := s.status.Update()
 		data.Update = &info
+		data.Checked = ago(info.CheckedAt)
 	}
 
 	s.render(w, "overview", data)

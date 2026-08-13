@@ -2,8 +2,9 @@
 <h1>Топики</h1>
 <p class="hint">
   Всё, что реально ходит по шине, разложенное по мастер-топикам: одно
-  устройство — одна таблица. Известно топиков: {{.Total}}{{if .Overflow}},
+  устройство — одна таблица. Известно топиков: <span id="total">{{.Total}}</span>{{if .Overflow}},
   не запомнено ещё {{.Overflow}} — предел снифера{{end}}.
+  Значения обновляются сами; новые топики появятся после обновления страницы.
 </p>
 
 {{range .Groups}}
@@ -16,12 +17,12 @@
     </tr></thead>
     <tbody>
     {{range .Topics}}
-      <tr>
+      <tr data-topic="{{.Topic}}">
         <td class="mono">{{if .Short}}{{.Short}}{{else}}{{.Topic}}{{end}}</td>
-        <td class="mono">{{.Payload}}{{if .Truncated}}…{{end}}</td>
+        <td class="mono" data-field="payload">{{.Payload}}{{if .Truncated}}…{{end}}</td>
         <td>{{.Kind}}{{if .Retained}} · retain{{end}}</td>
-        <td class="num">{{.Count}}</td>
-        <td class="hint">{{.Ago}}</td>
+        <td class="num" data-field="count">{{.Count}}</td>
+        <td class="hint" data-field="ago">{{.Ago}}</td>
         <td><a href="links/new?topic={{.Topic}}">Связать</a></td>
       </tr>
     {{end}}
@@ -35,3 +36,58 @@
 </p>
 {{end}}
 {{end}}
+
+<script>
+// Значения на шине меняются каждую секунду, и перезагружать ради них страницу
+// невыносимо. Обновляем опросом: за mod_proxy постоянное соединение часто
+// буферизуется, а опрос работает через любой прокси.
+(function () {
+    var EVERY = 2000;
+
+    function paint(list) {
+        var byTopic = {};
+        list.forEach(function (t) { byTopic[t.topic] = t; });
+
+        document.querySelectorAll("tr[data-topic]").forEach(function (row) {
+            var t = byTopic[row.dataset.topic];
+            if (!t) { return; }
+
+            var payload = t.payload + (t.truncated ? "…" : "");
+            set(row, "payload", payload);
+            set(row, "count", t.count);
+            set(row, "ago", ago(t.last_at));
+        });
+
+        var total = document.getElementById("total");
+        if (total) { total.textContent = list.length; }
+    }
+
+    function set(row, field, value) {
+        var cell = row.querySelector('[data-field="' + field + '"]');
+        if (cell && String(value) !== cell.textContent) {
+            cell.textContent = value;
+        }
+    }
+
+    // «Сколько прошло» считаем в браузере: иначе отметка застывала бы между
+    // опросами и выглядела бы так, будто сообщения перестали приходить.
+    function ago(iso) {
+        if (!iso) { return "—"; }
+        var sec = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+        if (sec < 60) { return sec + " с назад"; }
+        if (sec < 3600) { return Math.round(sec / 60) + " мин назад"; }
+        return Math.round(sec / 3600) + " ч назад";
+    }
+
+    function tick() {
+        if (document.hidden) { return; }
+        fetch("api/topics", { cache: "no-store" })
+            .then(function (r) { return r.json(); })
+            .then(paint)
+            .catch(function () { /* шлюз перезапускается — подождём */ });
+    }
+
+    setInterval(tick, EVERY);
+    tick();
+})();
+</script>

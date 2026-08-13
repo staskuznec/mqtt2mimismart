@@ -120,6 +120,14 @@ func (s *server) applyUpdate(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
+// checkUpdate спрашивает GitHub прямо сейчас и возвращает на «Обзор».
+func (s *server) checkUpdate(w http.ResponseWriter, r *http.Request) {
+	if s.status.CheckNow != nil {
+		s.status.CheckNow(r.Context())
+	}
+	s.redirect(w, r, "/")
+}
+
 type updateResult struct {
 	OK    bool
 	Error string

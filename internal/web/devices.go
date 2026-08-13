@@ -335,6 +335,7 @@ type templatesData struct {
 	Title, Nav string
 	Templates  []devtmpl.Item
 	Dir        string
+	Hidden     bool // каталог спрятан в служебном месте, класть туда файлы неудобно
 	Error      string
 	Saved      string
 }
@@ -351,9 +352,14 @@ func (s *server) pageTemplates(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Каталог по умолчанию лежит рядом с базой, в /var/lib: шлюз там пишет, но
+	// человеку класть туда файлы неудобно и непривычно. Значит служба ещё не
+	// знает про отдельный каталог — обновление через веб юнит не правит.
+	hidden := strings.HasPrefix(dir.Path(), "/var/lib/")
+
 	s.render(w, "templates", templatesData{
 		Title: "Профили", Nav: "templates",
-		Templates: list, Dir: dir.Path(),
+		Templates: list, Dir: dir.Path(), Hidden: hidden,
 		Saved: r.URL.Query().Get("saved"),
 	})
 }

@@ -30,9 +30,14 @@ const (
 	// releasesURL — публичный API GitHub, без ключа и без учётной записи.
 	releasesURL = "https://api.github.com/repos/" + repo + "/releases/latest"
 
-	// checkInterval — как часто спрашиваем. Раз в сутки: релизы выходят реже,
-	// а у неавторизованного доступа к API есть предел обращений.
+	// checkInterval — как часто спрашиваем сами, в фоне. Раз в сутки: релизы
+	// выходят реже, а у неавторизованного доступа к API есть предел обращений.
 	checkInterval = 24 * time.Hour
+
+	// freshFor — сколько результат считается свежим при заходе на «Обзор».
+	// Без этого человек, открывший страницу через час после старта, видел бы
+	// вчерашний ответ и не понимал, почему новой версии «нет».
+	freshFor = 15 * time.Minute
 
 	requestTimeout = 10 * time.Second
 )
@@ -53,8 +58,9 @@ type Checker struct {
 	client  *http.Client
 	log     *slog.Logger
 
-	mu   sync.Mutex
-	info Info
+	mu       sync.Mutex
+	info     Info
+	checking bool // проверка уже идёт: два запроса подряд ни к чему
 }
 
 // New создаёт проверяльщика для текущей версии.
@@ -93,6 +99,38 @@ func (c *Checker) Run(ctx context.Context) {
 			timer.Reset(checkInterval)
 		}
 	}
+}
+
+// EnsureFresh освежает сведения, если они устарели.
+//
+// Проверка идёт в стороне и страницу не задерживает: на объекте канал бывает
+// узким, а «Обзор» должен открываться сразу. Результат появится к следующему
+// заходу — или сразу, если нажать «Проверить».
+func (c *Checker) EnsureFresh(ctx context.Context) {
+	c.mu.Lock()
+	fresh := time.Since(c.info.CheckedAt) < freshFor
+	busy := c.checking
+	if !fresh && !busy {
+		c.checking = true
+	}
+	c.mu.Unlock()
+
+	if fresh || busy {
+		return
+	}
+
+	go func() {
+		// Свой контекст: запрос переживает закрытие страницы, иначе он
+		// обрывался бы на полпути и результат не сохранялся.
+		bg, cancel := context.WithTimeout(context.Background(), requestTimeout)
+		defer cancel()
+
+		c.Check(bg)
+
+		c.mu.Lock()
+		c.checking = false
+		c.mu.Unlock()
+	}()
 }
 
 // Check спрашивает GitHub о последней версии.

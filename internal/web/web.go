@@ -35,8 +35,10 @@ type Status struct {
 	Links    func() map[int64]link.Stats
 	Elements func() []logic.Element
 
-	// Update — что известно про доступную версию.
-	Update func() update.Info
+	// Update — что известно про доступную версию, CheckUpdates освежает это.
+	Update       func() update.Info
+	CheckUpdates func()
+	CheckNow     func(context.Context) update.Info
 
 	// Log — последние записи журнала: шлюз работает службой, и увидеть
 	// причину неполадки надо не выходя из браузера.
@@ -83,6 +85,7 @@ func Handler(log *slog.Logger, db *store.Store, version, basePath string, status
 	mux.HandleFunc("GET /elements", s.pageElements)
 	mux.HandleFunc("GET /log", s.pageLog)
 	mux.HandleFunc("POST /update", s.applyUpdate)
+	mux.HandleFunc("POST /update/check", s.checkUpdate)
 
 	mux.HandleFunc("GET /devices", s.pageDevices)
 	mux.HandleFunc("GET /devices/new", s.pageDeviceForm)

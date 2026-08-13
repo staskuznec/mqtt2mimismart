@@ -396,6 +396,8 @@ func (a *App) serve(ctx context.Context) error {
 	status.Elements = a.Elements
 	status.Reload = a.ReloadLinks
 	status.Update = a.update.Info
+	status.CheckUpdates = func() { a.update.EnsureFresh(context.Background()) }
+	status.CheckNow = a.update.Check
 	status.Log = a.ring.Entries
 	status.Reconfigure = a.Reconfigure
 	status.Upgrade = a.update.Apply
