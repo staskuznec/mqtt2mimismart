@@ -28,10 +28,12 @@
     <input type="text" name="shs_key" value="{{.Config.SHSKey}}" autocomplete="off" required></label>
   <label>mac-id <span>— пусто: сгенерируется случайный</span>
     <input type="text" name="shs_mac" value="{{.Config.SHSMac}}"></label>
-
-  </fieldset><fieldset><legend>Логика умного дома</legend>
-  <label>Путь к logic.xml <span>— из него берутся имена и адреса элементов</span>
-    <input type="text" name="logic_path" value="{{.Config.LogicPath}}"></label>
+  <p class="hint" style="margin:14px 0 0">
+    Описание дома (logic.xml) настраивать не нужно: оно приходит от сервера при
+    подключении, поэтому список элементов всегда соответствует тому серверу, с
+    которым шлюз работает на самом деле. Смотреть его — в разделе
+    <a href="/elements">Элементы</a>.
+  </p>
 
   </fieldset><button type="submit">Сохранить</button>
 </form>

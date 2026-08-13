@@ -193,7 +193,6 @@ func TestConfigRoundTrip(t *testing.T) {
 		SHSAddr:      "127.0.0.1:9001",
 		SHSKey:       "0123456789abcdef",
 		SHSMac:       "aabbccddeeff",
-		LogicPath:    "/home/sh2/logic.xml",
 	}
 	if err := s.SaveConfig(ctx, want); err != nil {
 		t.Fatalf("SaveConfig: %v", err)

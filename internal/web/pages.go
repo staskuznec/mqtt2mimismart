@@ -177,7 +177,6 @@ func (s *server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		SHSAddr:      trim(r.PostFormValue("shs_addr")),
 		SHSKey:       r.PostFormValue("shs_key"),
 		SHSMac:       trim(r.PostFormValue("shs_mac")),
-		LogicPath:    trim(r.PostFormValue("logic_path")),
 	}
 
 	if err := s.db.SaveConfig(r.Context(), cfg); err != nil {

@@ -19,8 +19,6 @@ const (
 	KeySHSAddr = "shs.addr" // host:port сервера умного дома
 	KeySHSKey  = "shs.key"  // ключ AES: ровно 16, 24 или 32 байта
 	KeySHSMac  = "shs.mac"  // mac-id клиента; пусто — сгенерируется случайный
-
-	KeyLogicPath = "logic.path" // путь к logic.xml на диске
 )
 
 // Config — подключения, которые шлюз поднимает при старте.
@@ -36,8 +34,6 @@ type Config struct {
 	SHSAddr string
 	SHSKey  string
 	SHSMac  string
-
-	LogicPath string
 }
 
 // Ready сообщает, что настроек достаточно для запуска обеих сторон шлюза.
@@ -166,7 +162,6 @@ func (s *Store) Config(ctx context.Context) (Config, error) {
 		SHSAddr:      all[KeySHSAddr],
 		SHSKey:       all[KeySHSKey],
 		SHSMac:       all[KeySHSMac],
-		LogicPath:    all[KeyLogicPath],
 	}, nil
 }
 
@@ -183,6 +178,5 @@ func (s *Store) SaveConfig(ctx context.Context, c Config) error {
 		KeySHSAddr:      c.SHSAddr,
 		KeySHSKey:       c.SHSKey,
 		KeySHSMac:       c.SHSMac,
-		KeyLogicPath:    c.LogicPath,
 	})
 }

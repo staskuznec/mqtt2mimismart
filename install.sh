@@ -21,6 +21,39 @@ die()  { printf 'ошибка: %s\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" = "0" ] || die "нужны права root: запустите через sudo"
 
+# --- диалог с человеком ----------------------------------------------------
+#
+# Скрипт обычно запускают через "curl … | sh", и тогда стандартный ввод занят
+# самим скриптом: обычный read съел бы его текст вместо ответа. Поэтому все
+# вопросы читаются напрямую с терминала.
+if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  INTERACTIVE=yes
+else
+  INTERACTIVE=no
+fi
+
+ask() { # ask "вопрос" "по умолчанию"
+  _ans=""
+  if [ "$INTERACTIVE" = yes ]; then
+    printf '%s' "$1" > /dev/tty
+    IFS= read -r _ans < /dev/tty || _ans=""
+  fi
+  [ -n "$_ans" ] || _ans="$2"
+  printf '%s' "$_ans"
+}
+
+ask_secret() { # ask_secret "вопрос" — ввод не показывается на экране
+  _sec=""
+  if [ "$INTERACTIVE" = yes ]; then
+    printf '%s' "$1" > /dev/tty
+    stty -echo < /dev/tty 2>/dev/null || true
+    IFS= read -r _sec < /dev/tty || _sec=""
+    stty echo < /dev/tty 2>/dev/null || true
+    printf '\n' > /dev/tty
+  fi
+  printf '%s' "$_sec"
+}
+
 # --- какая платформа -------------------------------------------------------
 case "$(uname -m)" in
   x86_64|amd64)   SUFFIX="linux-amd64" ;;
@@ -62,6 +95,172 @@ else
 fi
 
 chmod 0755 "$TMP/gateway"
+
+# --- MQTT-брокер -----------------------------------------------------------
+#
+# Без брокера шлюзу не с чем работать вовсе, поэтому ставим его здесь же.
+# Пропустить можно переменной SKIP_MOSQUITTO=1 — например, когда брокер живёт
+# на другой машине.
+MQTT_USER_DEVICES="devices"
+MQTT_USER_GATEWAY="gateway"
+MQTT_DEVICES_PASS=""
+MQTT_GATEWAY_PASS=""
+MQTT_MODE="${MQTT_MODE:-}" # anon | auth
+
+install_mosquitto() {
+  if command -v apt-get >/dev/null 2>&1; then
+    say "Ставим mosquitto через apt…"
+    DEBIAN_FRONTEND=noninteractive apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mosquitto mosquitto-clients
+  elif command -v apk >/dev/null 2>&1; then
+    say "Ставим mosquitto через apk…"
+    apk add --no-cache mosquitto mosquitto-clients
+  elif command -v dnf >/dev/null 2>&1; then
+    say "Ставим mosquitto через dnf…"
+    dnf install -y mosquitto
+  elif command -v yum >/dev/null 2>&1; then
+    say "Ставим mosquitto через yum…"
+    yum install -y mosquitto
+  else
+    return 1
+  fi
+}
+
+setup_mosquitto() {
+  if [ "${SKIP_MOSQUITTO:-}" = "1" ]; then
+    say "Брокер пропущен по SKIP_MOSQUITTO=1."
+    return 0
+  fi
+
+  if command -v mosquitto >/dev/null 2>&1; then
+    say "Брокер mosquitto уже установлен."
+  else
+    say ""
+    say "MQTT-брокер не найден. Без него шлюзу не с чем работать:"
+    say "устройства публикуют состояния именно в него."
+    ans=$(ask "Установить mosquitto? [Д/н]: " "д")
+    case "$ans" in
+      [нНnN]*) say "Пропускаем. Установите брокер сами и укажите его адрес в настройках шлюза."; return 0 ;;
+    esac
+    install_mosquitto || { say "Не удалось определить пакетный менеджер — установите mosquitto вручную."; return 0; }
+  fi
+
+  # Уже настроенный брокер не трогаем: перезаписать чужой конфиг — верный
+  # способ уронить работающий объект.
+  CONF="/etc/mosquitto/conf.d/mqtt2mimismart.conf"
+  if [ -f "$CONF" ]; then
+    say "Настройка брокера уже есть ($CONF), не трогаем."
+    return 0
+  fi
+  if ls /etc/mosquitto/conf.d/*.conf >/dev/null 2>&1; then
+    say "В /etc/mosquitto/conf.d уже есть свои настройки — брокер не трогаем."
+    return 0
+  fi
+
+  # --- с паролями или без ---
+  if [ -z "$MQTT_MODE" ]; then
+    say ""
+    say "Как настроить доступ к брокеру?"
+    say "  1 — с паролями (рекомендую): отдельные учётные записи для устройств"
+    say "      и для шлюза. Нужно, если в сети бывают чужие устройства или гости."
+    say "  2 — без паролей: подключиться сможет любой, кто в сети. По этой шине"
+    say "      ходят команды, щёлкающие нагрузку на 230 В, — годится только для"
+    say "      изолированной сети."
+    ans=$(ask "Ваш выбор [1]: " "1")
+    case "$ans" in
+      2) MQTT_MODE="anon" ;;
+      *) MQTT_MODE="auth" ;;
+    esac
+  fi
+
+  if [ "$MQTT_MODE" = "auth" ]; then
+    MQTT_DEVICES_PASS="${DEVICES_PASSWORD:-}"
+    MQTT_GATEWAY_PASS="${GATEWAY_PASSWORD:-}"
+
+    [ -n "$MQTT_DEVICES_PASS" ] || MQTT_DEVICES_PASS=$(ask_secret "Пароль для устройств: ")
+    [ -n "$MQTT_GATEWAY_PASS" ] || MQTT_GATEWAY_PASS=$(ask_secret "Пароль для нашего шлюза: ")
+
+    if [ -z "$MQTT_DEVICES_PASS" ] || [ -z "$MQTT_GATEWAY_PASS" ]; then
+      say "Пароли не заданы — настраиваем брокер без них."
+      MQTT_MODE="anon"
+    fi
+  fi
+
+  mkdir -p /etc/mosquitto/conf.d
+
+  if [ "$MQTT_MODE" = "auth" ]; then
+    PASSWD_FILE="/etc/mosquitto/passwd"
+    # -b задаёт пароль сразу, без интерактивного запроса; -c создаёт файл и
+    # затирает существующий, поэтому только когда файла ещё нет.
+    if [ -f "$PASSWD_FILE" ]; then
+      mosquitto_passwd -b "$PASSWD_FILE" "$MQTT_USER_DEVICES" "$MQTT_DEVICES_PASS"
+    else
+      mosquitto_passwd -c -b "$PASSWD_FILE" "$MQTT_USER_DEVICES" "$MQTT_DEVICES_PASS"
+    fi
+    mosquitto_passwd -b "$PASSWD_FILE" "$MQTT_USER_GATEWAY" "$MQTT_GATEWAY_PASS"
+
+    # Без файла паролей брокер с allow_anonymous false не пустит вообще никого,
+    # и объект встанет молча. Лучше остаться без учётных записей, чем без связи.
+    if [ ! -s "$PASSWD_FILE" ]; then
+      say "Не удалось создать файл паролей — настраиваем брокер без учётных записей."
+      MQTT_MODE="anon"
+    else
+      chown root:mosquitto "$PASSWD_FILE" 2>/dev/null || true
+      chmod 0640 "$PASSWD_FILE" 2>/dev/null || true
+    fi
+  fi
+
+  if [ "$MQTT_MODE" = "auth" ]; then
+
+    cat > "$CONF" <<CONFEOF
+# Настройка от install.sh шлюза mqtt2mimismart.
+#
+# listener без адреса означает «слушать на всех интерфейсах» — именно это и
+# нужно, чтобы устройства достучались. С версии 2.0 mosquitto по умолчанию
+# слушает только localhost, и устройства при этом молча не подключаются.
+listener 1883
+
+# Обе строки имеют смысл только вместе: password_file при allow_anonymous true
+# ничего не защищает, и кажется, что защита работает, хотя её нет.
+allow_anonymous false
+password_file /etc/mosquitto/passwd
+
+persistence true
+persistence_location /var/lib/mosquitto/
+log_dest file /var/log/mosquitto/mosquitto.log
+CONFEOF
+  else
+    cat > "$CONF" <<'CONFEOF'
+# Настройка от install.sh шлюза mqtt2mimismart.
+#
+# Без учётных записей: подключиться может любой, кто в сети. Годится для
+# изолированной сети; если сеть общая с жильцами или гостями, заведите пароли —
+# по этой шине ходят команды, щёлкающие нагрузку на 230 В.
+listener 1883
+allow_anonymous true
+
+persistence true
+persistence_location /var/lib/mosquitto/
+log_dest file /var/log/mosquitto/mosquitto.log
+CONFEOF
+  fi
+
+  systemctl enable mosquitto >/dev/null 2>&1 || true
+  systemctl restart mosquitto 2>/dev/null || service mosquitto restart 2>/dev/null || true
+  sleep 1
+
+  if systemctl is-active --quiet mosquitto 2>/dev/null; then
+    say "Брокер настроен и запущен."
+  else
+    say "Предупреждение: брокер не поднялся. Смотрите: journalctl -u mosquitto -n 30"
+  fi
+}
+
+# Осечка с брокером не должна ронять установку шлюза: шлюз поднимется и честно
+# покажет в вебе, что связи нет, а брокер можно доставить отдельно. Вызов через
+# "||" заодно отключает set -e внутри функции — иначе первая же неудачная
+# команда обрывала бы весь скрипт на середине.
+setup_mosquitto || say "Предупреждение: настроить брокер не удалось, ставим шлюз без него."
 
 # --- пользователь и каталоги ----------------------------------------------
 if ! id mqtt2mimismart >/dev/null 2>&1; then
@@ -135,10 +334,33 @@ sleep 2
 if systemctl is-active --quiet "$SERVICE"; then
   if [ "$UPDATE" = yes ]; then
     say "Обновлено до $VERSION, служба перезапущена."
+    say "Журнал: journalctl -u $SERVICE -f"
   else
-    say "Установлено. Откройте http://$(hostname -I 2>/dev/null | awk '{print $1}'):${ADDR##*:} и заполните настройки."
+    IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [ -n "$IP" ] || IP="адрес-сервера"
+    say ""
+    say "Установлено. Откройте http://$IP:${ADDR##*:} и заполните настройки."
+    say ""
+    say "Что вводить в разделе «Настройки»:"
+    if [ "$MQTT_MODE" = "auth" ] && [ -n "$MQTT_GATEWAY_PASS" ]; then
+      say "  Брокер:      127.0.0.1:1883"
+      say "  Пользователь: $MQTT_USER_GATEWAY"
+      say "  Пароль:       тот, что вы задали для шлюза"
+      say ""
+      say "А в настройках каждого устройства Shelly:"
+      say "  Server:       $IP:1883"
+      say "  Username:     $MQTT_USER_DEVICES"
+      say "  Password:     тот, что вы задали для устройств"
+    else
+      say "  Брокер:      127.0.0.1:1883"
+      say "  Пользователь и пароль оставьте пустыми — брокер без учётных записей."
+      say ""
+      say "А в настройках каждого устройства Shelly укажите Server: $IP:1883"
+    fi
+    say ""
+    say "Ключ сервера статистики и его адрес возьмите из настроек умного дома."
+    say "Журнал: journalctl -u $SERVICE -f"
   fi
-  say "Журнал: journalctl -u $SERVICE -f"
 else
   say "Служба не поднялась. Смотрите: journalctl -u $SERVICE -n 50"
   if [ -f "$BIN_DIR/mqtt2mimismart.old" ]; then
