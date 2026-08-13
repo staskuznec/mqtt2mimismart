@@ -16,10 +16,20 @@ STATE_DIR="${STATE_DIR:-/var/lib/mqtt2mimismart}"
 SERVICE="mqtt2mimismart"
 ADDR="${ADDR:-}"
 
-# Панель умного дома и подкаталог, в котором рядом с ней встанет шлюз.
-# WEB_ROOT — где лежит панель; уточняется под конкретный сервер.
-WEB_ROOT="${WEB_ROOT:-/home/sh2/web}"
+# Корень веб-сервера, где лежит панель умного дома, и подкаталог, в котором
+# рядом с ней встанет шлюз. Панель обычно в <корень>/MimiSetup — по ней корень
+# и опознаётся.
+WEB_ROOT="${WEB_ROOT:-}"
 BASE_PATH="${BASE_PATH:-/mqtt}"
+
+find_web_root() {
+  [ -z "$WEB_ROOT" ] || { printf '%s' "$WEB_ROOT"; return 0; }
+  for d in /home/html /var/www/html /home/sh2/web /var/www; do
+    [ -d "$d/MimiSetup" ] && { printf '%s' "$d"; return 0; }
+  done
+  printf ''
+}
+WEB_ROOT=$(find_web_root)
 
 say()  { printf '%s\n' "$*"; }
 die()  { printf 'ошибка: %s\n' "$*" >&2; exit 1; }
@@ -353,7 +363,7 @@ PROXYEOF
 # файл, и правка пережила бы ровно до её обновления. Зато отдельная страница
 # рядом с ней открывается по понятному адресу и ничего не ломает.
 add_web_link() {
-  [ -d "$WEB_ROOT" ] || return 0
+  [ -n "$WEB_ROOT" ] && [ -d "$WEB_ROOT" ] || return 0
   [ "$PROXY" = yes ] || return 0
 
   cat > "$WEB_ROOT/mqtt.html" <<LINKEOF
@@ -364,6 +374,13 @@ add_web_link() {
 <p>Переход к шлюзу MQTT: <a href="$BASE_PATH/">$BASE_PATH/</a></p>
 LINKEOF
   say "Ссылка на шлюз: http://сервер/mqtt.html (или сразу $BASE_PATH/)"
+
+  # Пункт в самом меню панели отсюда не добавить: разделы приходят с сервера
+  # переводами, а меню собирается на лету. Когда понадобится, это делается
+  # дописыванием своего скрипта в index.php панели — не правкой app.js.
+  if [ -d "$WEB_ROOT/MimiSetup" ]; then
+    say "Панель найдена: $WEB_ROOT/MimiSetup (пункт в её меню пока не добавляем)"
+  fi
 }
 
 setup_proxy || say "Предупреждение: настроить веб-сервер не удалось."
