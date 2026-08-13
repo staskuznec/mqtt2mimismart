@@ -339,6 +339,29 @@ allow_anonymous true
 CONFEOF
   fi
 
+  # Свой журнал mosquitto не ротирует: при десятке устройств с
+  # переподключениями файл растёт незаметно и однажды забивает диск.
+  # В пакетах Debian ротация обычно есть — кладём только если её нет.
+  if [ -d /etc/logrotate.d ] && [ ! -f /etc/logrotate.d/mosquitto ]; then
+    cat > /etc/logrotate.d/mosquitto <<'ROTEOF'
+/var/log/mosquitto/*.log {
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 mosquitto root
+    postrotate
+        # Брокер держит файл открытым: без этого сигнала он продолжил бы
+        # писать в удалённый файл, и место не освободилось бы.
+        [ -f /run/mosquitto/mosquitto.pid ] && kill -HUP "$(cat /run/mosquitto/mosquitto.pid)" || true
+    endscript
+}
+ROTEOF
+    say "Ротация журнала брокера настроена: /etc/logrotate.d/mosquitto"
+  fi
+
   systemctl enable mosquitto >/dev/null 2>&1 || true
   systemctl restart mosquitto 2>/dev/null || service mosquitto restart 2>/dev/null || true
   sleep 1
@@ -659,6 +682,11 @@ RestartSec=5s
 StandardOutput=journal
 StandardError=journal
 
+# Предел на всплеск записей: сорвавшийся в цикл компонент иначе способен
+# залить журнал. Обычной работе не мешает.
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=500
+
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
@@ -730,6 +758,13 @@ if systemctl is-active --quiet "$SERVICE"; then
     say "Ключ сервера статистики и его адрес возьмите из настроек умного дома."
     say ""
     say "Профили устройств лежат в $PROFILES_DIR — туда можно класть свои."
+    say ""
+    if ! grep -qs "^SystemMaxUse=" /etc/systemd/journald.conf; then
+      say "Совет: журнал systemd по умолчанию занимает до 10% диска."
+      say "Чтобы ограничить, добавьте в /etc/systemd/journald.conf строку"
+      say "    SystemMaxUse=200M"
+      say "и выполните: systemctl restart systemd-journald"
+    fi
     say "Журнал: journalctl -u $SERVICE -f"
   fi
 else

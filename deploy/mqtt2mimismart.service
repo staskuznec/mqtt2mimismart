@@ -31,9 +31,17 @@ StateDirectoryMode=0700
 # нужен обновлению кнопкой в вебе: оно заменяет бинарник на месте.
 ReadWritePaths=/var/lib/mqtt2mimismart /home/sh2/mqtt/profiles /opt/mqtt2mimismart
 
-# Журнал уходит в journald: смотреть через journalctl -u mqtt2mimismart -f
+# Журнал уходит в journald: смотреть через journalctl -u mqtt2mimismart -f.
+# Ротацию и общий предел объёма держит сам journald — см. SystemMaxUse в
+# /etc/systemd/journald.conf.
 StandardOutput=journal
 StandardError=journal
+
+# Предел на всплеск записей. Без него сорвавшийся в цикл компонент способен
+# залить журнал за часы: тут это не гипотеза, а обычное дело при обрыве связи
+# с брокером. Обычной работе предел не мешает — шлюз пишет считанные строки.
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=500
 
 NoNewPrivileges=true
 PrivateTmp=true
