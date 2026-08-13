@@ -150,6 +150,8 @@ type health struct {
 }
 
 type linksHealth struct {
+	Total     int    `json:"total"`
+	Enabled   int    `json:"enabled"`
 	Delivered uint64 `json:"delivered"`
 	Skipped   uint64 `json:"skipped"`
 	Echoes    uint64 `json:"echoes"`
@@ -231,16 +233,26 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if s.status.Links != nil {
-		var total linksHealth
-		for _, st := range s.status.Links() {
-			total.Delivered += st.Delivered
-			total.Skipped += st.Skipped
-			total.Echoes += st.Echoes
-			total.Errors += st.Errors
+	// Связки считаем всегда: их число меняется при правках, и на «Обзоре» оно
+	// должно обновляться само, как и остальное.
+	var links linksHealth
+	if all, err := s.db.Links(ctx); err == nil {
+		links.Total = len(all)
+		for _, l := range all {
+			if l.Enabled {
+				links.Enabled++
+			}
 		}
-		h.Links = &total
 	}
+	if s.status.Links != nil {
+		for _, st := range s.status.Links() {
+			links.Delivered += st.Delivered
+			links.Skipped += st.Skipped
+			links.Echoes += st.Echoes
+			links.Errors += st.Errors
+		}
+	}
+	h.Links = &links
 
 	// Отсутствие связи — не повод отвечать ошибкой: демон жив, и веб обязан
 	// открываться, чтобы связь было где починить.

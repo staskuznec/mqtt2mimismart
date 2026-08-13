@@ -44,12 +44,12 @@
     {{if .MQTT}}
       <p><span class="pill {{if .MQTT.Connected}}ok{{else}}bad{{end}}" data-live="mqtt.state">{{if .MQTT.Connected}}на связи{{else}}связи нет{{end}}</span></p>
       <table>
-        <tr><th>Клиент</th><td class="mono">{{.MQTT.ClientID}}</td></tr>
+        <tr><th>Клиент</th><td class="mono" data-live="mqtt.client_id">{{.MQTT.ClientID}}</td></tr>
         <tr><th>Принято</th><td class="num" data-live="mqtt.received">{{.MQTT.Received}}</td></tr>
         <tr><th>Опубликовано</th><td class="num" data-live="mqtt.published">{{.MQTT.Published}}</td></tr>
         <tr><th>Топиков на шине</th><td class="num" data-live="mqtt.known_topics">{{.MQTT.KnownTopics}}</td></tr>
       </table>
-      {{if .MQTT.LastError}}<p class="hint">{{.MQTT.LastError}}</p>{{end}}
+      <p class="hint" data-live="mqtt.last_error" {{if not .MQTT.LastError}}hidden{{end}}>{{.MQTT.LastError}}</p>
     {{else}}<p class="empty">не настроен</p>{{end}}
   </div>
 
@@ -63,15 +63,15 @@
         <tr><th>Отправлено</th><td class="num" data-live="shs.sent">{{.SHS.Sent}}</td></tr>
         <tr><th>logic.xml</th><td class="num" data-live="shs.logic_bytes">{{.SHS.LogicBytes}}</td></tr>
       </table>
-      {{if .SHS.LastError}}<p class="hint">{{.SHS.LastError}}</p>{{end}}
+      <p class="hint" data-live="shs.last_error" {{if not .SHS.LastError}}hidden{{end}}>{{.SHS.LastError}}</p>
     {{else}}<p class="empty">не настроен</p>{{end}}
   </div>
 
   <div class="card">
     <h2>Связки</h2>
     <table>
-      <tr><th>Всего</th><td class="num">{{.Links.Total}}</td></tr>
-      <tr><th>Включено</th><td class="num">{{.Links.Enabled}}</td></tr>
+      <tr><th>Всего</th><td class="num" data-live="links.total">{{.Links.Total}}</td></tr>
+      <tr><th>Включено</th><td class="num" data-live="links.enabled">{{.Links.Enabled}}</td></tr>
       <tr><th>Доставлено</th><td class="num" data-live="links.delivered">{{.Links.Delivered}}</td></tr>
       <tr><th>Отсеяно повторов</th><td class="num" data-live="links.skipped">{{.Links.Skipped}}</td></tr>
       <tr><th>Признано эхом</th><td class="num" data-live="links.echoes">{{.Links.Echoes}}</td></tr>
@@ -123,6 +123,15 @@
             }
 
             var v = value(data, path);
+
+            // Ошибки появляются и исчезают: пустую строку прячем, иначе от
+            // прошлой неполадки оставался бы пустой отступ.
+            if (path.indexOf("last_error") >= 0) {
+                el.textContent = v || "";
+                el.hidden = !v;
+                return;
+            }
+
             if (v === undefined || v === null) { return; }
             if (path === "shs.logic_bytes") { v = v + " Б"; }
             if (String(v) !== el.textContent) { el.textContent = v; }
