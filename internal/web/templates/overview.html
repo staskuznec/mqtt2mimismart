@@ -1,5 +1,6 @@
 {{define "content"}}
 <h1>Обзор</h1>
+
 <p class="hint">
   Версия {{.Version}}, схема базы {{.Schema}}, {{.DBPath}}
   {{with .Update}}
@@ -18,18 +19,16 @@
   {{end}}
 </p>
 
-{{with .Update}}
-  {{if .Available}}
-    <div class="msg ok">
-      Вышла версия <b>{{.Latest}}</b>, установлена {{.Current}}.
-      {{with .URL}}<a href="{{.}}">Что изменилось</a>{{end}}
-      <form method="post" action="update" style="display:inline"
-            onsubmit="return confirm('Обновить шлюз? Он перезапустится, связь прервётся на несколько секунд.')">
-        <button type="submit" style="margin-top:10px">Обновить</button>
-      </form>
-    </div>
-  {{end}}
-{{end}}
+{{with .Update}}{{if .Available}}
+  <div class="msg ok">
+    Вышла версия <b>{{.Latest}}</b>, установлена {{.Current}}.
+    {{with .URL}}<a href="{{.}}">Что изменилось</a>{{end}}
+    <form method="post" action="update" style="display:inline"
+          onsubmit="return confirm('Обновить шлюз? Он перезапустится, связь прервётся на несколько секунд.')">
+      <button type="submit" style="margin-top:10px">Обновить</button>
+    </form>
+  </div>
+{{end}}{{end}}
 
 {{if not .Configured}}
   <div class="msg bad">
@@ -42,7 +41,11 @@
   <div class="card">
     <h2>MQTT-брокер</h2>
     {{if .MQTT}}
-      <p><span class="pill {{if .MQTT.Connected}}ok{{else}}bad{{end}}" data-live="mqtt.state">{{if .MQTT.Connected}}на связи{{else}}связи нет{{end}}</span></p>
+      <p>
+        <span class="pill {{if .MQTT.Connected}}ok{{else}}bad{{end}}" data-live="mqtt.state">
+          {{if .MQTT.Connected}}на связи{{else}}связи нет{{end}}
+        </span>
+      </p>
       <table>
         <tr><th>Клиент</th><td class="mono" data-live="mqtt.client_id">{{.MQTT.ClientID}}</td></tr>
         <tr><th>Принято</th><td class="num" data-live="mqtt.received">{{.MQTT.Received}}</td></tr>
@@ -50,7 +53,9 @@
         <tr><th>Топиков на шине</th><td class="num" data-live="mqtt.known_topics">{{.MQTT.KnownTopics}}</td></tr>
       </table>
       <p class="hint" data-live="mqtt.last_error" {{if not .MQTT.LastError}}hidden{{end}}>{{.MQTT.LastError}}</p>
-    {{else}}<p class="empty">не настроен</p>{{end}}
+    {{else}}
+      <p class="empty">не настроен</p>
+    {{end}}
   </div>
 
   <div class="card">
@@ -61,10 +66,12 @@
         <tr><th>Идентификатор</th><td class="num" data-live="shs.client_id">{{.SHS.ClientID}}</td></tr>
         <tr><th>Событий</th><td class="num" data-live="shs.events">{{.SHS.Events}}</td></tr>
         <tr><th>Отправлено</th><td class="num" data-live="shs.sent">{{.SHS.Sent}}</td></tr>
-        <tr><th>logic.xml</th><td class="num" data-live="shs.logic_bytes">{{.SHS.LogicBytes}}</td></tr>
+        <tr><th>logic.xml</th><td class="num" data-live="shs.logic_bytes">{{.SHS.LogicBytes}} Б</td></tr>
       </table>
       <p class="hint" data-live="shs.last_error" {{if not .SHS.LastError}}hidden{{end}}>{{.SHS.LastError}}</p>
-    {{else}}<p class="empty">не настроен</p>{{end}}
+    {{else}}
+      <p class="empty">не настроен</p>
+    {{end}}
   </div>
 
   <div class="card">
@@ -79,7 +86,6 @@
     </table>
   </div>
 </div>
-{{end}}
 
 <script>
 // Живое обновление опросом, а не постоянным соединением: за mod_proxy события
@@ -87,13 +93,6 @@
 // именно там, где шлюз и стоит. Опрос работает через любой прокси.
 (function () {
     var EVERY = 3000;
-    var stopped = false;
-
-    // Пока вкладка не на виду, спрашивать незачем: браузер всё равно душит
-    // таймеры, а сервер отвечал бы впустую.
-    document.addEventListener("visibilitychange", function () {
-        if (!document.hidden) { tick(); }
-    });
 
     function value(data, path) {
         return path.split(".").reduce(function (o, k) {
@@ -114,11 +113,10 @@
             }
             if (path === "shs.state") {
                 var phase = value(data, "shs.phase");
-                var text = { connected: "на связи", syncing: "синхронизация состояний",
-                             connecting: "подключение" }[phase] || "связи нет";
-                var cls = { connected: "ok", syncing: "warn", connecting: "warn" }[phase] || "bad";
-                el.textContent = text;
-                el.className = "pill " + cls;
+                el.textContent = { connected: "на связи", syncing: "синхронизация состояний",
+                                   connecting: "подключение" }[phase] || "связи нет";
+                el.className = "pill " + ({ connected: "ok", syncing: "warn",
+                                            connecting: "warn" }[phase] || "bad");
                 return;
             }
 
@@ -134,22 +132,29 @@
 
             if (v === undefined || v === null) { return; }
             if (path === "shs.logic_bytes") { v = v + " Б"; }
-            if (String(v) !== el.textContent) { el.textContent = v; }
+            if (String(v) !== el.textContent.trim()) { el.textContent = v; }
         });
     }
 
     function tick() {
-        if (stopped || document.hidden) { return; }
+        // Пока вкладка не на виду, спрашивать незачем: браузер душит таймеры,
+        // а сервер отвечал бы впустую.
+        if (document.hidden) { return; }
         fetch("healthz", { cache: "no-store" })
             .then(function (r) { return r.json(); })
             .then(paint)
             .catch(function () {
                 // Шлюз перезапускается или сеть моргнула — молча ждём
-                // следующего раза, ошибку на странице показывать не за что.
+                // следующего раза, показывать на странице нечего.
             });
     }
+
+    document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) { tick(); }
+    });
 
     setInterval(tick, EVERY);
     tick();
 })();
 </script>
+{{end}}

@@ -1,10 +1,62 @@
 {{define "layout"}}
 {{if .OK}}
-  <div class="msg ok">
-    Обновление установлено. Шлюз перезапускается — страница станет доступна
-    через несколько секунд.
+  <div class="msg ok" id="waiting">
+    Обновление установлено. Шлюз перезапускается…
+    <span id="dots"></span>
   </div>
-  <script>setTimeout(function () { location.href = "."; }, 6000);</script>
+  <p class="hint" id="hint">
+    Страница откроется сама, как только он ответит. Обычно это несколько секунд:
+    служба ждёт перед перезапуском, а потом поднимает соединения заново.
+  </p>
+
+  <script>
+  // Ждём ответа, а не отсчитываем время: перезагрузка вслепую попадала в окно,
+  // когда шлюз ещё лежит, и человек видел «Service Unavailable» от
+  // веб-сервера, хотя всё шло правильно.
+  (function () {
+      var EVERY = 1000;
+      var GIVE_UP_AFTER = 90000; // полторы минуты: дольше это уже не «сейчас поднимется»
+      var waited = 0;
+
+      var dots = document.getElementById("dots");
+      var step = 0;
+
+      function tick() {
+          step = (step + 1) % 4;
+          dots.textContent = "·".repeat(step);
+          waited += EVERY;
+
+          fetch("healthz", { cache: "no-store" })
+              .then(function (r) {
+                  // Пока шлюз лежит, веб-сервер отвечает 503 — это ответ, но
+                  // не наш, поэтому смотрим именно на код.
+                  if (r.ok) { location.href = "."; return; }
+                  again();
+              })
+              .catch(again);
+      }
+
+      function again() {
+          if (waited >= GIVE_UP_AFTER) {
+              document.getElementById("waiting").className = "msg bad";
+              document.getElementById("waiting").textContent =
+                  "Шлюз не ответил за полторы минуты.";
+              document.getElementById("hint").innerHTML =
+                  'Посмотрите, что со службой: <code>systemctl status mqtt2mimismart</code> ' +
+                  'и <code>journalctl -u mqtt2mimismart -n 50</code>. ' +
+                  'Прежний бинарник сохранён рядом: ' +
+                  '<code>mv /opt/mqtt2mimismart/mqtt2mimismart.old ' +
+                  '/opt/mqtt2mimismart/mqtt2mimismart && systemctl restart mqtt2mimismart</code>';
+              return;
+          }
+          setTimeout(tick, EVERY);
+      }
+
+      // Первая попытка не сразу: процесс ещё не успел завершиться, и она
+      // попала бы в старый, уже обновлённый на диске, но ещё работающий шлюз.
+      setTimeout(tick, 2000);
+  })();
+  </script>
 {{else}}
   <div class="msg bad">Обновиться не удалось: {{.Error}}</div>
   <p><a href=".">Вернуться</a></p>
