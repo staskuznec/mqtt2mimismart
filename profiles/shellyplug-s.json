@@ -30,6 +30,14 @@
       ]
     },
     {
+      "key": "voltage",
+      "title": "Напряжение сети, В",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
       "key": "temp",
       "title": "Температура устройства, °C",
       "form": "sensor",
@@ -108,6 +116,15 @@
       "unit": " кВт",
       "precision": 1,
       "scale": 1.6666666666666667e-05
+    },
+    {
+      "name": "Напряжение сети",
+      "direction": "in",
+      "role": "voltage",
+      "topic": "{{prefix}}/voltage",
+      "encode": "text",
+      "unit": " В",
+      "precision": 0
     },
     {
       "name": "Температура устройства",

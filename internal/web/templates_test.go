@@ -183,19 +183,30 @@ func TestPagesRender(t *testing.T) {
 		},
 		"settings": settingsData{Title: "Настройки", Nav: "settings", Saved: true},
 		"topics": topicsData{
-			Title: "Топики", Nav: "topics", Total: 1,
-			Groups: []topicGroup{{Prefix: "shellies/a", Topics: []topicRow{{
-				Topic: "shellies/a/relay/0", Short: "relay/0", Payload: "on",
-				Kind: "text", Count: 5, Ago: "3 с назад",
-			}}}},
+			Title: "Топики", Nav: "topics", Total: 3,
+			Groups: []topicGroup{
+				{Prefix: "shellies/a", Topics: []topicRow{
+					{Topic: "shellies/a/relay/0", Short: "relay/0", Payload: "on",
+						Kind: "text", Count: 5, Ago: "3 с назад"},
+					{Topic: "shellies/a/relay/0/power", Short: "relay/0/power",
+						Payload: "41.2", Kind: "number", Count: 9, Ago: "1 с назад"},
+				}},
+				{Prefix: "shellies/b", Topics: []topicRow{
+					{Topic: "shellies/b/temperature", Short: "temperature",
+						Payload: "46.06", Kind: "number", Count: 2, Ago: "8 с назад"},
+				}},
+			},
 		},
 		"links": linksData{
 			Title: "Связки", Nav: "links", Total: 1,
-			Groups: []linkGroup{{Device: "Реле", Prefix: "shellies/a", Links: []linkRow{{
-				ID: 1, Enabled: true, Arrow: "шина ⇄ дом", Topic: "shellies/a/relay/0",
-				CommandTopic: "shellies/a/relay/0/command", Addr: "758:4",
-				Name: "Свет", Form: "byte", LastValue: "1", Paired: true,
-			}}}},
+			Groups: []linkGroup{{Device: "Реле", Prefix: "shellies/a", Links: []linkRow{
+				{ID: 1, Enabled: true, Arrow: "шина ⇄ дом", Topic: "shellies/a/relay/0",
+					CommandTopic: "shellies/a/relay/0/command", Addr: "758:4",
+					Name: "Свет", Form: "byte", LastValue: "1", Paired: true},
+				{ID: 2, Enabled: false, Arrow: "шина → дом", Topic: "shellies/a/relay/0/power",
+					Addr: "563:120", Form: "text", LastValue: "41 Вт",
+					Errors: 2, LastError: "значение не число"},
+			}}},
 		},
 		"link_form": linkFormData{
 			Title: "Связка", Nav: "links", New: true, Both: true,
@@ -259,6 +270,33 @@ func TestPagesRender(t *testing.T) {
 		}
 		if buf.Len() == 0 {
 			t.Errorf("%s: пустая страница", name)
+			continue
 		}
+		checkTags(t, name, buf.String())
+	}
+}
+
+// checkTags ловит теги, оказавшиеся внутри цикла.
+//
+// Закрывающий {{end}} после </tbody> выглядит безобидно: разбор проходит,
+// одна строка рисуется верно. А на нескольких таблица закрывается после
+// первой, и остальные строки браузер выбрасывает наружу простым текстом.
+// Ровно так сломались «Топики».
+func checkTags(t *testing.T, page, html string) {
+	t.Helper()
+
+	for _, tag := range []string{"table", "tbody", "thead", "form", "div", "select"} {
+		open := strings.Count(html, "<"+tag+" ") + strings.Count(html, "<"+tag+">")
+		closed := strings.Count(html, "</"+tag+">")
+		if open != closed {
+			t.Errorf("%s: тег <%s> открыт %d раз, закрыт %d — вёрстка развалится",
+				page, tag, open, closed)
+		}
+	}
+
+	// Строк в таблице должно быть столько же, сколько закрывающих тегов:
+	// незакрытая строка так же ломает разметку.
+	if rows := strings.Count(html, "<tr"); rows != strings.Count(html, "</tr>") {
+		t.Errorf("%s: строк таблицы %d, закрыто %d", page, rows, strings.Count(html, "</tr>"))
 	}
 }
