@@ -6,7 +6,7 @@
 </p>{{end}}
 {{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
 
-<form method="get" action="{{if .DeviceID}}/devices/{{.DeviceID}}/edit{{else}}/devices/new{{end}}">
+<form method="get" action="{{if .DeviceID}}devices/{{.DeviceID}}/edit{{else}}devices/new{{end}}">
   <label>Шаблон
     <select name="template" onchange="this.form.submit()">
       <option value="">— выберите модель —</option>
