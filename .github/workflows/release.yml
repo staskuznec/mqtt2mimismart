@@ -72,6 +72,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Тег должен стоять на main
+        # Релиз собирается только из main: на объекте должно быть понятно, что
+        # именно там стоит, а тег с ветки разработки такой гарантии не даёт.
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "Тег $GITHUB_REF_NAME не входит в main — релиз не собираем." >&2
+            exit 1
+          }
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
