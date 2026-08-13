@@ -54,7 +54,7 @@ type deviceFormData struct {
 	Title, Nav string
 	Error      string
 
-	Templates []store.TemplateInfo
+	Templates []devtmpl.Item
 	Selected  devtmpl.Template
 	HasChoice bool // шаблон выбран, показываем роли
 
@@ -90,10 +90,22 @@ type prefixOption struct {
 func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 	data := deviceFormData{Title: "Новое устройство", Nav: "devices"}
 
-	var err error
-	if data.Templates, err = s.db.Templates(r.Context()); err != nil {
+	dir := s.db.TemplateDir()
+	if dir == nil {
+		http.Error(w, "каталог шаблонов не настроен", http.StatusInternalServerError)
+		return
+	}
+	list, err := dir.List()
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	// Битые файлы в выборе модели не показываем: развернуть их всё равно
+	// нельзя, а причина видна на странице «Шаблоны».
+	for _, it := range list {
+		if it.Error == "" {
+			data.Templates = append(data.Templates, it)
+		}
 	}
 
 	data.Prefix = r.URL.Query().Get("prefix")
@@ -249,7 +261,15 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 		if deviceID != 0 {
 			data.Title = "Настройка устройства"
 		}
-		data.Templates, _ = s.db.Templates(r.Context())
+		if dir := s.db.TemplateDir(); dir != nil {
+			if list, err := dir.List(); err == nil {
+				for _, it := range list {
+					if it.Error == "" {
+						data.Templates = append(data.Templates, it)
+					}
+				}
+			}
+		}
 		if t, err := s.db.Template(r.Context(), key); err == nil {
 			data.Selected, data.HasChoice = t, true
 			data.Roles = s.roleOptions(t, data.Elements, assign)
@@ -313,88 +333,173 @@ func (s *server) deleteDevice(w http.ResponseWriter, r *http.Request) {
 
 type templatesData struct {
 	Title, Nav string
-	Templates  []store.TemplateInfo
+	Templates  []devtmpl.Item
+	Dir        string
 	Error      string
 	Saved      string
 }
 
 func (s *server) pageTemplates(w http.ResponseWriter, r *http.Request) {
-	list, err := s.db.Templates(r.Context())
+	dir := s.db.TemplateDir()
+	if dir == nil {
+		http.Error(w, "каталог шаблонов не настроен", http.StatusInternalServerError)
+		return
+	}
+
+	list, err := dir.List()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.render(w, "templates", templatesData{
-		Title: "Шаблоны", Nav: "templates",
-		Templates: list,
-		Saved:     r.URL.Query().Get("saved"),
+		Title: "Профили", Nav: "templates",
+		Templates: list, Dir: dir.Path(),
+		Saved: r.URL.Query().Get("saved"),
 	})
 }
 
-// uploadTemplate принимает шаблон текстом или файлом.
-func (s *server) uploadTemplate(w http.ResponseWriter, r *http.Request) {
-	// Десять мегабайт с запасом: шаблон это несколько килобайт, но упереться
-	// в предел на ровном месте неприятнее, чем подержать лишнее в памяти.
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, "форма не разобрана", http.StatusBadRequest)
-			return
+// templateEditData — редактор одного шаблона.
+type templateEditData struct {
+	Title, Nav string
+	Key        string
+	Body       string
+	New        bool
+	Bundled    bool
+	Error      string
+	Saved      bool
+}
+
+func (s *server) pageTemplateEdit(w http.ResponseWriter, r *http.Request) {
+	dir := s.db.TemplateDir()
+	if dir == nil {
+		http.Error(w, "каталог шаблонов не настроен", http.StatusInternalServerError)
+		return
+	}
+
+	key := r.PathValue("key")
+	data := templateEditData{
+		Title: "Профиль", Nav: "templates", Key: key,
+		Saved: r.URL.Query().Get("saved") == "1",
+	}
+
+	if key == "new" {
+		data.New, data.Key = true, ""
+		data.Body = newTemplateSkeleton
+		s.render(w, "template_edit", data)
+		return
+	}
+
+	body, err := dir.Raw(key)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	data.Body = string(body)
+
+	if list, err := dir.List(); err == nil {
+		for _, it := range list {
+			if it.Key == key {
+				data.Bundled = it.Bundled
+			}
 		}
+	}
+	s.render(w, "template_edit", data)
+}
+
+func (s *server) saveTemplate(w http.ResponseWriter, r *http.Request) {
+	dir := s.db.TemplateDir()
+	if dir == nil {
+		http.Error(w, "каталог шаблонов не настроен", http.StatusInternalServerError)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "форма не разобрана", http.StatusBadRequest)
+		return
 	}
 
 	key := trim(r.PostFormValue("key"))
-	body := []byte(r.PostFormValue("body"))
-
-	// Файл важнее текстового поля: если приложили файл, значит им и хотели.
-	if file, header, err := r.FormFile("file"); err == nil {
-		defer func() { _ = file.Close() }()
-		buf := make([]byte, header.Size)
-		if _, err := file.Read(buf); err == nil || len(buf) > 0 {
-			body = buf
-		}
-		if key == "" {
-			key = strings.TrimSuffix(header.Filename, ".json")
-		}
-	}
+	body := r.PostFormValue("body")
 
 	fail := func(msg string) {
-		list, _ := s.db.Templates(r.Context())
-		s.render(w, "templates", templatesData{
-			Title: "Шаблоны", Nav: "templates",
-			Templates: list, Error: msg,
+		s.render(w, "template_edit", templateEditData{
+			Title: "Профиль", Nav: "templates",
+			Key: key, Body: body, Error: msg, New: r.PostFormValue("new") == "1",
 		})
 	}
 
-	if len(body) == 0 {
-		fail("шаблон пуст: вставьте JSON в поле или приложите файл")
-		return
-	}
 	if key == "" {
-		fail("не задан ключ шаблона — по нему он и опознаётся")
+		fail("не задан ключ шаблона — по нему он опознаётся и так называется файл")
 		return
 	}
-
-	if err := s.db.SaveTemplate(r.Context(), key, body); err != nil {
+	if err := dir.Save(key, []byte(body)); err != nil {
 		fail(err.Error())
 		return
 	}
+
+	s.log.Info("шаблон сохранён", "key", key)
 	s.redirect(w, r, "/templates?saved="+key)
 }
 
 func (s *server) deleteTemplate(w http.ResponseWriter, r *http.Request) {
-	if err := s.db.DeleteTemplate(r.Context(), r.PathValue("key")); err != nil {
+	dir := s.db.TemplateDir()
+	if dir == nil {
+		http.Error(w, "каталог шаблонов не настроен", http.StatusInternalServerError)
+		return
+	}
+	if err := dir.Delete(r.PathValue("key")); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.redirect(w, r, "/templates")
 }
 
-// showTemplate отдаёт шаблон как JSON — чтобы скопировать и поправить.
+// showTemplate отдаёт файл шаблона как есть — чтобы скачать или скопировать.
 func (s *server) showTemplate(w http.ResponseWriter, r *http.Request) {
-	t, err := s.db.Template(r.Context(), r.PathValue("key"))
+	dir := s.db.TemplateDir()
+	if dir == nil {
+		http.Error(w, "каталог шаблонов не настроен", http.StatusInternalServerError)
+		return
+	}
+	body, err := dir.Raw(r.PathValue("key"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, t)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = w.Write(body)
 }
+
+// newTemplateSkeleton — заготовка новой модели: пустой файл перед человеком
+// хуже, чем рабочий пример, который остаётся поправить.
+const newTemplateSkeleton = `{
+  "name": "Моя модель",
+  "model": "SHPLG-S",
+  "note": "Чем эта модель отличается и что важно знать перед применением.",
+
+  "roles": [
+    {"key": "sw", "title": "Розетка", "form": "byte", "required": true,
+     "types": ["lamp", "script"]},
+    {"key": "power", "title": "Мощность, Вт", "form": "text", "types": ["virtual"]}
+  ],
+
+  "links": [
+    {
+      "name": "Состояние", "direction": "in", "role": "sw", "pair": "sw",
+      "topic": "{{prefix}}/relay/0",
+      "encode": "byte",
+      "values": {"on": "1", "off": "0", "overpower": "1"}
+    },
+    {
+      "name": "Команда", "direction": "out", "role": "sw", "pair": "sw",
+      "topic": "{{prefix}}/relay/0/command",
+      "kind": "command", "decode": "lamp", "qos": 1,
+      "values": {"on": "on", "off": "off", "toggle": "toggle"}
+    },
+    {
+      "name": "Мощность", "direction": "in", "role": "power",
+      "topic": "{{prefix}}/relay/0/power",
+      "encode": "text", "unit": " Вт", "precision": 1
+    }
+  ]
+}
+`

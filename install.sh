@@ -13,6 +13,10 @@ set -eu
 REPO="staskuznec/mqtt2mimismart"
 BIN_DIR="${BIN_DIR:-/opt/mqtt2mimismart}"
 STATE_DIR="${STATE_DIR:-/var/lib/mqtt2mimismart}"
+
+# Профили устройств лежат отдельно, в доступном месте: туда кладут свои файлы,
+# и рыться ради этого в /var/lib не надо.
+PROFILES_DIR="${PROFILES_DIR:-/home/sh2/mqtt/profiles}"
 SERVICE="mqtt2mimismart"
 ADDR="${ADDR:-}"
 
@@ -545,9 +549,14 @@ if ! id mqtt2mimismart >/dev/null 2>&1; then
     || say "предупреждение: не удалось завести пользователя, служба пойдёт от root"
 fi
 
-mkdir -p "$BIN_DIR" "$STATE_DIR"
+mkdir -p "$BIN_DIR" "$STATE_DIR" "$PROFILES_DIR"
 chown mqtt2mimismart:mqtt2mimismart "$STATE_DIR" 2>/dev/null || true
 chmod 0700 "$STATE_DIR"
+
+# Профили доступны на чтение всем, на запись — шлюзу: класть туда файлы должно
+# быть просто, а секретов в них нет.
+chown -R mqtt2mimismart "$PROFILES_DIR" 2>/dev/null || true
+chmod 0755 "$PROFILES_DIR"
 
 # --- ставим ----------------------------------------------------------------
 UPDATE=no
@@ -577,7 +586,7 @@ Wants=network-online.target
 Type=simple
 User=mqtt2mimismart
 Group=mqtt2mimismart
-ExecStart=$BIN_DIR/mqtt2mimismart --addr $ADDR --db $STATE_DIR/gateway.db${BASE_PATH:+ --base-path $BASE_PATH} --log-level info
+ExecStart=$BIN_DIR/mqtt2mimismart --addr $ADDR --db $STATE_DIR/gateway.db --profiles $PROFILES_DIR${BASE_PATH:+ --base-path $BASE_PATH} --log-level info
 Restart=always
 RestartSec=5s
 
@@ -587,7 +596,8 @@ StandardError=journal
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=$STATE_DIR
+# Каталоги, куда службе можно писать: всё остальное закрыто ProtectSystem.
+ReadWritePaths=$STATE_DIR $PROFILES_DIR
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
@@ -653,6 +663,8 @@ if systemctl is-active --quiet "$SERVICE"; then
     fi
     say ""
     say "Ключ сервера статистики и его адрес возьмите из настроек умного дома."
+    say ""
+    say "Профили устройств лежат в $PROFILES_DIR — туда можно класть свои."
     say "Журнал: journalctl -u $SERVICE -f"
   fi
 else

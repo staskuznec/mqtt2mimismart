@@ -17,6 +17,7 @@ import (
 	"syscall"
 
 	"github.com/staskuznec/mqtt2mimismart/internal/app"
+	"github.com/staskuznec/mqtt2mimismart/internal/devtmpl"
 	"github.com/staskuznec/mqtt2mimismart/internal/logging"
 	"github.com/staskuznec/mqtt2mimismart/internal/store"
 )
@@ -41,6 +42,7 @@ func run() error {
 		addr      = flag.String("addr", "127.0.0.1:8080", "адрес веб-интерфейса, host:port")
 		dbPath    = flag.String("db", "", "путь к файлу базы (по умолчанию "+DefaultDBName+" рядом с бинарником)")
 		basePath  = flag.String("base-path", "", "подкаталог, если шлюз стоит за веб-сервером: /mqtt")
+		profiles  = flag.String("profiles", "", "каталог с профилями устройств (по умолчанию profiles рядом с базой)")
 		logLevel  = flag.String("log-level", "info", "уровень журнала: debug, info, warn, error")
 		logFormat = flag.String("log-format", logging.FormatText, "формат журнала: text или json")
 		showVer   = flag.Bool("version", false, "показать версию и выйти")
@@ -76,6 +78,18 @@ func run() error {
 		}
 	}()
 
+	// Профили устройств лежат файлами: их видно, их можно открыть редактором,
+	// положить туда свой или скопировать с другого объекта.
+	profilesDir := *profiles
+	if profilesDir == "" {
+		profilesDir = filepath.Join(filepath.Dir(db.Path()), "profiles")
+	}
+	dir, err := devtmpl.Open(profilesDir)
+	if err != nil {
+		return err
+	}
+	db.SetTemplates(dir)
+
 	schema, err := db.SchemaVersion(ctx)
 	if err != nil {
 		return err
@@ -84,6 +98,7 @@ func run() error {
 		"version", version,
 		"db", db.Path(),
 		"schema", schema,
+		"profiles", dir.Path(),
 		"addr", *addr)
 
 	a, err := app.New(log, ring, db, version, *addr, *basePath)

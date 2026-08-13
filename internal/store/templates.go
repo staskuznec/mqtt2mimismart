@@ -2,121 +2,27 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
-	"time"
 
 	"github.com/staskuznec/mqtt2mimismart/internal/devtmpl"
 	"github.com/staskuznec/mqtt2mimismart/internal/link"
 )
 
-// TemplateInfo — шаблон в списке.
-type TemplateInfo struct {
-	devtmpl.Template
-	Builtin bool // встроенный правке не подлежит
-}
+// Templates — каталог шаблонов на диске. Заводится в main и передаётся сюда:
+// хранилищу нужно уметь применять шаблон, но не знать, откуда он взялся.
+func (s *Store) SetTemplates(dir *devtmpl.Dir) { s.templates = dir }
 
-// Templates перечисляет доступные шаблоны: встроенные плюс загруженные.
-//
-// Загруженный с тем же ключом перекрывает встроенный — так модель правится под
-// конкретную прошивку, не дожидаясь релиза шлюза.
-func (s *Store) Templates(ctx context.Context) ([]TemplateInfo, error) {
-	builtin, err := devtmpl.Builtin()
-	if err != nil {
-		return nil, err
-	}
-
-	byKey := make(map[string]TemplateInfo, len(builtin))
-	for _, t := range builtin {
-		byKey[t.Key] = TemplateInfo{Template: t, Builtin: true}
-	}
-
-	rows, err := s.db.QueryContext(ctx, `SELECT key, body_json FROM templates`)
-	if err != nil {
-		return nil, fmt.Errorf("store: чтение шаблонов: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	for rows.Next() {
-		var key, body string
-		if err := rows.Scan(&key, &body); err != nil {
-			return nil, fmt.Errorf("store: чтение шаблонов: %w", err)
-		}
-		t, err := devtmpl.Parse([]byte(body))
-		if err != nil {
-			// Битый шаблон в базе не должен ронять список остальных.
-			continue
-		}
-		t.Key = key
-		byKey[key] = TemplateInfo{Template: t}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: чтение шаблонов: %w", err)
-	}
-
-	out := make([]TemplateInfo, 0, len(byKey))
-	for _, t := range byKey {
-		out = append(out, t)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out, nil
-}
+// TemplateDir возвращает каталог шаблонов.
+func (s *Store) TemplateDir() *devtmpl.Dir { return s.templates }
 
 // Template возвращает шаблон по ключу.
 func (s *Store) Template(ctx context.Context, key string) (devtmpl.Template, error) {
-	var body string
-	err := s.db.QueryRowContext(ctx, `SELECT body_json FROM templates WHERE key = ?`, key).Scan(&body)
-	switch {
-	case err == nil:
-		t, err := devtmpl.Parse([]byte(body))
-		if err != nil {
-			return devtmpl.Template{}, err
-		}
-		t.Key = key
-		return t, nil
-	case errors.Is(err, sql.ErrNoRows):
-		return devtmpl.Find(key)
-	default:
-		return devtmpl.Template{}, fmt.Errorf("store: чтение шаблона: %w", err)
+	if s.templates == nil {
+		return devtmpl.Find(key) // на случай вызова до настройки каталога
 	}
-}
-
-// SaveTemplate сохраняет загруженный шаблон. Разбор и проверка идут до записи:
-// шаблон применяют один раз и потом доверяют ему.
-func (s *Store) SaveTemplate(ctx context.Context, key string, body []byte) error {
-	key = strings.TrimSpace(key)
-	if key == "" {
-		return fmt.Errorf("store: у шаблона пустой ключ")
-	}
-
-	t, err := devtmpl.Parse(body)
-	if err != nil {
-		return err
-	}
-
-	now := time.Now().Unix()
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO templates (key, name, body_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(key) DO UPDATE SET
-			name = excluded.name, body_json = excluded.body_json, updated_at = excluded.updated_at`,
-		key, t.Name, string(body), now, now)
-	if err != nil {
-		return fmt.Errorf("store: сохранение шаблона: %w", err)
-	}
-	return nil
-}
-
-// DeleteTemplate удаляет загруженный шаблон. Встроенный при этом снова
-// становится действующим, если ключ совпадал.
-func (s *Store) DeleteTemplate(ctx context.Context, key string) error {
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM templates WHERE key = ?`, key); err != nil {
-		return fmt.Errorf("store: удаление шаблона: %w", err)
-	}
-	return nil
+	return s.templates.Get(key)
 }
 
 // ApplyTemplate заводит устройство и разворачивает связки шаблона.

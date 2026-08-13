@@ -1,0 +1,248 @@
+{{define "content"}}
+<h1>{{if .New}}Новый профиль{{else}}{{.Key}}{{end}}</h1>
+<p class="hint">
+  <a href="templates">← Ко всем профилям</a>
+  {{if .Bundled}} · этот профиль поставляется со шлюзом; правки сохранятся, а
+  удаление вернёт исходный при следующем запуске{{end}}
+</p>
+
+{{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
+
+<form method="post" action="templates/save" onsubmit="return beforeSave()">
+  <input type="hidden" name="new" value="{{if .New}}1{{end}}">
+
+  <label>Ключ <span>— по нему шаблон опознаётся, так же называется файл</span>
+    <input type="text" name="key" value="{{.Key}}" required
+           pattern="[A-Za-z0-9_-]+" title="Буквы, цифры, дефис и подчёркивание"
+           {{if not .New}}readonly{{end}}
+           style="max-width:320px"></label>
+
+  <label>Описание модели
+    <span>
+      Проверка идёт по мере набора. Что означает каждое поле — в справке на
+      странице <a href="templates">Профили</a>.
+    </span>
+  </label>
+
+  <!-- Подсветка сделана наложением: под прозрачным полем ввода лежит тот же
+       текст, раскрашенный разметкой. Так работает без внешних библиотек, а их
+       здесь быть не может — шлюз живёт в сети, где интернета может не быть. -->
+  <div class="editor">
+    <pre id="highlight" aria-hidden="true"><code></code></pre>
+    <textarea id="body" name="body" spellcheck="false" autocomplete="off"
+              oninput="sync()" onscroll="syncScroll()" onkeydown="handleKeys(event)">{{.Body}}</textarea>
+  </div>
+
+  <div id="status" class="check"></div>
+
+  <div class="toolbar" style="margin-top:18px">
+    <button type="submit" id="save">Сохранить</button>
+    <button type="button" class="ghost" onclick="format()">Выровнять отступы</button>
+    {{if not .New}}
+      <a href="api/templates/{{.Key}}" class="btn ghost" download="{{.Key}}.json">Скачать</a>
+    {{end}}
+  </div>
+</form>
+
+<style>
+  .editor {
+    position: relative; margin-top: 6px;
+    border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+    background: var(--panel);
+  }
+  .editor pre, .editor textarea {
+    margin: 0; padding: 14px 16px; border: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.5; tab-size: 2;
+    white-space: pre; overflow-wrap: normal;
+  }
+  .editor pre {
+    position: absolute; inset: 0; overflow: auto;
+    pointer-events: none; color: var(--fg);
+  }
+  .editor textarea {
+    position: relative; width: 100%; height: 60vh; min-height: 320px;
+    resize: vertical; background: transparent;
+    color: transparent; caret-color: var(--fg);
+  }
+  .editor textarea:focus { outline: 2px solid var(--accent-soft); }
+  /* Цвета подсветки — те же, что у состояний: лишней палитры заводить незачем. */
+  .j-key { color: var(--accent); }
+  .j-str { color: var(--ok); }
+  .j-num { color: var(--warn); }
+  .j-lit { color: var(--bad); }
+  .j-pun { color: var(--muted); }
+
+  .check { margin-top: 12px; font-size: 14px; }
+  .check .ok  { color: var(--ok); }
+  .check .bad { color: var(--bad); }
+  .check .where {
+    display: block; margin-top: 6px; padding: 8px 12px;
+    background: var(--bad-bg); border-radius: 8px;
+    font-family: ui-monospace, monospace; font-size: 13px; white-space: pre;
+    overflow-x: auto;
+  }
+</style>
+
+<script>
+var area = document.getElementById("body");
+var code = document.querySelector("#highlight code");
+var status = document.getElementById("status");
+
+// Раскраска. Разбираем строку за строкой одним проходом: своё вместо
+// библиотеки, потому что подсветить надо ровно JSON и ничего больше.
+function highlight(text) {
+    var out = "";
+    var i = 0;
+    while (i < text.length) {
+        var ch = text[i];
+
+        if (ch === '"') {
+            var j = i + 1;
+            while (j < text.length && !(text[j] === '"' && text[j - 1] !== "\\")) { j++; }
+            var str = text.slice(i, Math.min(j + 1, text.length));
+            // Строка перед двоеточием — имя поля, остальные значения.
+            var after = text.slice(j + 1).match(/^\s*:/);
+            out += '<span class="' + (after ? "j-key" : "j-str") + '">' + escapeHtml(str) + "</span>";
+            i = j + 1;
+            continue;
+        }
+
+        if (/[-0-9]/.test(ch) && /[\s:,\[]/.test(text[i - 1] || " ")) {
+            var num = text.slice(i).match(/^-?\d+(\.\d+)?([eE][-+]?\d+)?/);
+            if (num) {
+                out += '<span class="j-num">' + num[0] + "</span>";
+                i += num[0].length;
+                continue;
+            }
+        }
+
+        var lit = text.slice(i).match(/^(true|false|null)\b/);
+        if (lit) {
+            out += '<span class="j-lit">' + lit[0] + "</span>";
+            i += lit[0].length;
+            continue;
+        }
+
+        if ("{}[],:".indexOf(ch) >= 0) {
+            out += '<span class="j-pun">' + ch + "</span>";
+            i++;
+            continue;
+        }
+
+        out += escapeHtml(ch);
+        i++;
+    }
+    return out;
+}
+
+function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Проверка. Кроме синтаксиса смотрим то, что проверит сервер: без этого
+// человек узнавал бы об ошибке только после сохранения.
+function check() {
+    var text = area.value;
+    var doc;
+    try {
+        doc = JSON.parse(text);
+    } catch (e) {
+        showError(e.message, text);
+        return null;
+    }
+
+    var problems = [];
+    if (!doc.name) { problems.push("нет названия (name)"); }
+    if (!Array.isArray(doc.links) || doc.links.length === 0) {
+        problems.push("нет ни одной связки (links)");
+    }
+
+    var roles = {};
+    (doc.roles || []).forEach(function (r) {
+        if (!r.key) { problems.push("у роли нет ключа (key)"); }
+        else if (roles[r.key]) { problems.push("роль «" + r.key + "» описана дважды"); }
+        roles[r.key] = true;
+    });
+
+    (doc.links || []).forEach(function (l, n) {
+        var where = "связка " + (n + 1) + (l.name ? " «" + l.name + "»" : "");
+        if (!roles[l.role]) { problems.push(where + ": роль «" + (l.role || "") + "» не описана"); }
+        if (!l.topic || l.topic.indexOf({{"\"{{prefix}}\""}}) < 0) {
+            problems.push(where + ": в топике нет подстановки " + {{"\"{{prefix}}\""}});
+        }
+        if (l.direction !== "in" && l.direction !== "out") {
+            problems.push(where + ": направление должно быть in или out");
+        }
+        if (l.direction === "out" && l.retain && l.kind !== "state") {
+            problems.push(where + ": retain на команде заставит устройство сработать при включении");
+        }
+    });
+
+    if (problems.length > 0) {
+        status.innerHTML = '<span class="bad">Ошибок: ' + problems.length + "</span>" +
+            '<span class="where">• ' + problems.map(escapeHtml).join("\n• ") + "</span>";
+        return null;
+    }
+
+    var roleCount = Object.keys(roles).length;
+    status.innerHTML = '<span class="ok">JSON верный: ролей ' + roleCount +
+        ", связок " + doc.links.length + "</span>";
+    return doc;
+}
+
+// showError показывает, где именно сломался разбор: без номера строки искать
+// пропущенную запятую в сотне строк невозможно.
+function showError(message, text) {
+    var pos = (message.match(/position (\d+)/) || [])[1];
+    var where = "";
+    if (pos !== undefined) {
+        var upto = text.slice(0, Number(pos));
+        var line = upto.split("\n").length;
+        var col = Number(pos) - upto.lastIndexOf("\n");
+        var src = text.split("\n")[line - 1] || "";
+        where = "строка " + line + ", позиция " + col + "\n" +
+            src + "\n" + " ".repeat(Math.max(col - 1, 0)) + "^";
+    }
+    status.innerHTML = '<span class="bad">JSON не разбирается: ' + escapeHtml(message) + "</span>" +
+        (where ? '<span class="where">' + escapeHtml(where) + "</span>" : "");
+}
+
+function sync() {
+    code.innerHTML = highlight(area.value);
+    syncScroll();
+    check();
+}
+
+function syncScroll() {
+    var pre = document.getElementById("highlight");
+    pre.scrollTop = area.scrollTop;
+    pre.scrollLeft = area.scrollLeft;
+}
+
+// Отступ по Tab: в поле ввода он иначе уводит фокус, а руками отбивать пробелы
+// в JSON невыносимо.
+function handleKeys(e) {
+    if (e.key !== "Tab") { return; }
+    e.preventDefault();
+    var start = area.selectionStart;
+    area.value = area.value.slice(0, start) + "  " + area.value.slice(area.selectionEnd);
+    area.selectionStart = area.selectionEnd = start + 2;
+    sync();
+}
+
+function format() {
+    var doc = check();
+    if (!doc) { return; }
+    area.value = JSON.stringify(doc, null, 2) + "\n";
+    sync();
+}
+
+function beforeSave() {
+    if (check()) { return true; }
+    return confirm("В профиле есть ошибки, и сервер его отклонит. Всё равно отправить?");
+}
+
+sync();
+</script>
+{{end}}

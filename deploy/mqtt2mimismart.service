@@ -16,6 +16,7 @@ Group=root
 ExecStart=/opt/mqtt2mimismart/mqtt2mimismart \
     --addr 0.0.0.0:8080 \
     --db /var/lib/mqtt2mimismart/gateway.db \
+    --profiles /home/sh2/mqtt/profiles \
     --log-level info
 
 Restart=always
@@ -24,6 +25,9 @@ RestartSec=5s
 # Создаёт /var/lib/mqtt2mimismart с нужным владельцем при первом запуске.
 StateDirectory=mqtt2mimismart
 StateDirectoryMode=0700
+
+# Каталоги, куда службе можно писать: всё остальное закрыто ProtectSystem.
+ReadWritePaths=/var/lib/mqtt2mimismart /home/sh2/mqtt/profiles
 
 # Журнал уходит в journald: смотреть через journalctl -u mqtt2mimismart -f
 StandardOutput=journal

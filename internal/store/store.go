@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/staskuznec/mqtt2mimismart/internal/devtmpl"
 )
 
 // FileMode — права на файл базы. Внутри секреты, читать её посторонним незачем.
@@ -23,8 +25,9 @@ const FileMode os.FileMode = 0o600
 
 // Store — открытая база со всеми накатанными миграциями.
 type Store struct {
-	db   *sql.DB
-	path string
+	db        *sql.DB
+	path      string
+	templates *devtmpl.Dir // шаблоны лежат файлами, а не в базе
 }
 
 // Open открывает базу по пути path, создавая её при необходимости, и приводит
