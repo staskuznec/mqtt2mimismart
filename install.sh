@@ -111,6 +111,9 @@ fi
 
 chmod 0755 "$TMP/gateway"
 
+# Файл вкладки для панели: не критичен, поэтому без сверки и без отказа.
+curl -fsSL "$BASE/mimisetup-mqtt-tab.js" -o "$TMP/mqtt-tab.js" 2>/dev/null || true
+
 # --- MQTT-брокер -----------------------------------------------------------
 #
 # Без брокера шлюзу не с чем работать вовсе, поэтому ставим его здесь же.
@@ -375,16 +378,83 @@ add_web_link() {
 LINKEOF
   say "Ссылка на шлюз: http://сервер/mqtt.html (или сразу $BASE_PATH/)"
 
-  # Пункт в самом меню панели отсюда не добавить: разделы приходят с сервера
-  # переводами, а меню собирается на лету. Когда понадобится, это делается
-  # дописыванием своего скрипта в index.php панели — не правкой app.js.
-  if [ -d "$WEB_ROOT/MimiSetup" ]; then
-    say "Панель найдена: $WEB_ROOT/MimiSetup (пункт в её меню пока не добавляем)"
+}
+
+# add_panel_tab добавляет вкладку «MQTT» в верхнее меню панели MimiSetup.
+#
+# Сам app.js не трогаем: он собран Sencha Cmd в один минифицированный файл, и
+# правка в нём не переживёт обновления панели, а найти её потом невозможно.
+# Вместо этого кладём рядом свой файл и подключаем его строкой в index.php —
+# читаемой, восстановимой и заметной.
+add_panel_tab() {
+  PANEL="$WEB_ROOT/MimiSetup"
+  [ -d "$PANEL" ] && [ -f "$PANEL/index.php" ] || return 0
+
+  ans=$(ask "Добавить вкладку «MQTT» в меню панели MimiSetup? [Д/н]: " "д")
+  case "$ans" in
+    [нНnN]*) return 0 ;;
+  esac
+
+  # Файл вкладки всегда перезаписываем: он наш, и в нём мог поменяться адрес.
+  if [ -f "$TMP/mqtt-tab.js" ]; then
+    cp "$TMP/mqtt-tab.js" "$PANEL/mqtt-tab.js"
+  else
+    curl -fsSL "$BASE/mimisetup-mqtt-tab.js" -o "$PANEL/mqtt-tab.js" 2>/dev/null || {
+      say "Не удалось получить файл вкладки — пропускаем."
+      return 0
+    }
+  fi
+  # Адрес шлюза во вкладке. За прокси это подкаталог того же сервера, без
+  # прокси — прямой порт: вкладка полезна в обоих случаях, просто во втором
+  # адрес абсолютный.
+  if [ "$PROXY" = yes ]; then
+    TAB_URL="$BASE_PATH/"
+  else
+    TAB_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [ -n "$TAB_IP" ] || TAB_IP="127.0.0.1"
+    TAB_URL="http://$TAB_IP:${ADDR##*:}/"
+  fi
+
+  # Правим через временный файл: у sed -i разный синтаксис в GNU и BSD, и
+  # полагаться на конкретный означает однажды получить пустой файл.
+  sed "s#var GATEWAY_URL = \"/mqtt/\";#var GATEWAY_URL = \"$TAB_URL\";#" \
+    "$PANEL/mqtt-tab.js" > "$PANEL/mqtt-tab.js.tmp" &&
+    mv -f "$PANEL/mqtt-tab.js.tmp" "$PANEL/mqtt-tab.js"
+
+  if grep -q "mqtt-tab.js" "$PANEL/index.php" 2>/dev/null; then
+    say "Вкладка «MQTT» в панели уже подключена."
+    return 0
+  fi
+
+  # Резервная копия перед правкой чужого файла: восстановить должно быть проще,
+  # чем разбираться, что сломалось.
+  cp "$PANEL/index.php" "$PANEL/index.php.before-mqtt" 2>/dev/null || true
+
+  # Строка вставляется сразу после подключения app.js — к этому моменту
+  # фреймворк уже есть, а панель ещё не построена. Через awk, а не sed -i:
+  # у последнего разный синтаксис в GNU и BSD.
+  awk '{
+    print
+    if ($0 ~ /src="app\.js/ && !done) {
+      print "<script type=\"text/javascript\" src=\"mqtt-tab.js\"></script>"
+      done = 1
+    }
+  }' "$PANEL/index.php" > "$PANEL/index.php.tmp" 2>/dev/null
+
+  if [ -s "$PANEL/index.php.tmp" ] && grep -q "mqtt-tab.js" "$PANEL/index.php.tmp"; then
+    mv -f "$PANEL/index.php.tmp" "$PANEL/index.php"
+    say "Вкладка «MQTT» добавлена в меню панели."
+    say "Обновление панели её снесёт — запустите этот скрипт повторно, и она вернётся."
+  else
+    rm -f "$PANEL/index.php.tmp"
+    say "Не удалось дописать index.php панели. Добавьте вручную после подключения app.js:"
+    say '    <script type="text/javascript" src="mqtt-tab.js"></script>'
   fi
 }
 
 setup_proxy || say "Предупреждение: настроить веб-сервер не удалось."
 add_web_link || true
+add_panel_tab || say "Предупреждение: вкладку в панель добавить не удалось."
 
 # За прокси шлюзу незачем слушать наружу: снаружи к нему ходят через панель.
 if [ -z "$ADDR" ]; then

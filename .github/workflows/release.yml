@@ -88,5 +88,6 @@ jobs:
             mqtt2mimismart-*
             SHA256SUMS
             deploy/mqtt2mimismart.service
+            deploy/mimisetup-mqtt-tab.js
             install.sh
           generate_release_notes: true
