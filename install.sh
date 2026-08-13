@@ -1,7 +1,12 @@
 #!/bin/sh
 # Установка и обновление шлюза mqtt2mimismart.
 #
-#   curl -fsSL https://raw.githubusercontent.com/staskuznec/mqtt2mimismart/main/install.sh | sh
+#   curl -fsSL https://github.com/staskuznec/mqtt2mimismart/releases/latest/download/install.sh | sh
+#
+# Ссылка на релиз, а не на raw в ветке: во-первых, так берётся выпущенная
+# версия, а не то, что сейчас в main; во-вторых, GitHub считает скачивания
+# файлов релиза, и по ним видно, сколько раз устанавливали — с raw такой
+# статистики нет вовсе.
 #
 # Скрипт ставит бинарник в /opt/mqtt2mimismart, заводит службу systemd и
 # запускает её. Повторный запуск обновляет: база и настройки лежат отдельно,

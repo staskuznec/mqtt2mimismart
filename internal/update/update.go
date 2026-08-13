@@ -283,7 +283,7 @@ func (c *Checker) Apply(ctx context.Context) error {
 		return fmt.Errorf("не удалось записать в %s: %w.\n\n"+
 			"Скорее всего каталог закрыт настройкой службы (ProtectSystem=strict). "+
 			"Запустите установщик — он добавит каталог в ReadWritePaths:\n"+
-			"curl -fsSL https://raw.githubusercontent.com/staskuznec/mqtt2mimismart/main/install.sh | sudo sh",
+			"curl -fsSL https://github.com/staskuznec/mqtt2mimismart/releases/latest/download/install.sh | sudo sh",
 			dir, err)
 	}
 
