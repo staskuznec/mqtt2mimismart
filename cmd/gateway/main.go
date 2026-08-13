@@ -52,7 +52,7 @@ func run() error {
 		return nil
 	}
 
-	log, err := logging.New(os.Stderr, *logLevel, *logFormat)
+	log, ring, err := logging.New(os.Stderr, *logLevel, *logFormat)
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func run() error {
 		"schema", schema,
 		"addr", *addr)
 
-	a, err := app.New(log, db, version, *addr, *basePath)
+	a, err := app.New(log, ring, db, version, *addr, *basePath)
 	if err != nil {
 		return err
 	}

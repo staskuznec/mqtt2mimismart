@@ -12,10 +12,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/staskuznec/mqtt2mimismart/internal/link"
+	"github.com/staskuznec/mqtt2mimismart/internal/logging"
 	"github.com/staskuznec/mqtt2mimismart/internal/logic"
 	"github.com/staskuznec/mqtt2mimismart/internal/mqtt"
 	"github.com/staskuznec/mqtt2mimismart/internal/shs"
@@ -31,15 +33,21 @@ const shutdownTimeout = 10 * time.Second
 // App — собранный демон.
 type App struct {
 	log     *slog.Logger
+	ring    *logging.Ring // последние записи журнала, для показа в вебе
 	db      *store.Store
 	version string
 	addr    string
 	base    string // подкаталог снаружи, когда шлюз стоит за веб-сервером
 
-	mqtt   *mqtt.Client
-	shs    *shs.Client
-	engine *link.Engine
 	update *update.Checker
+
+	// Клиенты пересоздаются при каждой правке настроек, а веб читает их
+	// состояние одновременно — поэтому только под мьютексом.
+	mu          sync.Mutex
+	mqtt        *mqtt.Client
+	shs         *shs.Client
+	engine      *link.Engine
+	stopSession context.CancelFunc
 
 	// Разобранный logic.xml. Приезжает в рукопожатии и меняется редко, а
 	// разбирать три сотни элементов на каждой отрисовке страницы незачем.
@@ -54,10 +62,11 @@ type App struct {
 // настраивать не нужно: список всегда соответствует тому серверу, с которым мы
 // на самом деле работаем.
 func (a *App) Elements() []logic.Element {
-	if a.shs == nil {
+	client, _, _ := a.clients()
+	if client == nil {
 		return nil
 	}
-	raw := a.shs.Logic()
+	raw := client.Logic()
 	if len(raw) == 0 {
 		return nil
 	}
@@ -82,43 +91,97 @@ func (a *App) Elements() []logic.Element {
 
 // New собирает демон. Клиенты создаются только при заполненных настройках:
 // подключаться, не зная куда, всё равно некуда.
-func New(log *slog.Logger, db *store.Store, version, addr, basePath string) (*App, error) {
+func New(log *slog.Logger, ring *logging.Ring, db *store.Store,
+	version, addr, basePath string) (*App, error) {
+
 	a := &App{
-		log: log, db: db, version: version, addr: addr, base: basePath,
+		log: log, ring: ring, db: db, version: version, addr: addr, base: basePath,
 		update: update.New(version),
 	}
 
-	cfg, err := db.Config(context.Background())
+	return a, nil
+}
+
+// connect создаёт клиентов по текущим настройкам.
+//
+// Отдельно от New, потому что вызывается ещё и после правки настроек в вебе:
+// требовать перезапуск службы ради введённого пароля — значит гнать человека
+// в консоль оттуда, где он только что всё настроил.
+func (a *App) connect(ctx context.Context) error {
+	cfg, err := a.db.Config(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if !cfg.Ready() {
-		log.Warn("настройки не заполнены, откройте веб-интерфейс и завершите первый запуск",
-			"url", "http://"+addr)
-		return a, nil
+		a.log.Warn("настройки не заполнены, откройте веб-интерфейс и завершите первый запуск",
+			"url", "http://"+a.addr)
+		return nil
 	}
 
-	a.shs = shs.New(shs.Config{
+	shsClient := shs.New(shs.Config{
 		Addr: cfg.SHSAddr,
 		Key:  cfg.SHSKey,
 		Mac:  cfg.SHSMac,
-	}, log.With("component", "shs"))
+	}, a.log.With("component", "shs"))
 
-	a.mqtt, err = mqtt.New(mqtt.Config{
+	mqttClient, err := mqtt.New(mqtt.Config{
 		Addr:     cfg.MQTTAddr,
 		User:     cfg.MQTTUser,
 		Password: cfg.MQTTPassword,
 		ClientID: cfg.MQTTClientID,
-	}, log.With("component", "mqtt"))
+	}, a.log.With("component", "mqtt"))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	a.engine = link.NewEngine(a.shs, a.mqtt, log.With("component", "engine"))
-	if err := a.ReloadLinks(context.Background()); err != nil {
-		return nil, err
+	a.mu.Lock()
+	a.shs, a.mqtt = shsClient, mqttClient
+	a.engine = link.NewEngine(shsClient, mqttClient, a.log.With("component", "engine"))
+	a.mu.Unlock()
+
+	return a.ReloadLinks(ctx)
+}
+
+// Снимки состояния для веба. Через методы, а не напрямую полями: клиенты
+// пересоздаются при правке настроек, и захваченная один раз ссылка показывала
+// бы прошлое соединение — или пустоту, если при старте настроек ещё не было.
+
+func (a *App) clients() (*shs.Client, *mqtt.Client, *link.Engine) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.shs, a.mqtt, a.engine
+}
+
+func (a *App) shsStatus() shs.Status {
+	c, _, _ := a.clients()
+	if c == nil {
+		return shs.Status{Phase: shs.PhaseDisconnected}
 	}
-	return a, nil
+	return c.Status()
+}
+
+func (a *App) mqttStatus() mqtt.Status {
+	_, c, _ := a.clients()
+	if c == nil {
+		return mqtt.Status{}
+	}
+	return c.Status()
+}
+
+func (a *App) topics() []mqtt.TopicInfo {
+	_, c, _ := a.clients()
+	if c == nil {
+		return nil
+	}
+	return c.Topics()
+}
+
+func (a *App) linkStats() map[int64]link.Stats {
+	_, _, e := a.clients()
+	if e == nil {
+		return nil
+	}
+	return e.Stats()
 }
 
 // ReloadLinks перечитывает связки из базы и отдаёт их движку.
@@ -127,7 +190,8 @@ func New(log *slog.Logger, db *store.Store, version, addr, basePath string) (*Ap
 // ради изменённой связки было бы дико, а держать связки в двух местах — базе
 // и памяти движка — значит однажды их рассинхронизировать.
 func (a *App) ReloadLinks(ctx context.Context) error {
-	if a.engine == nil {
+	_, _, engine := a.clients()
+	if engine == nil {
 		return nil
 	}
 
@@ -135,7 +199,7 @@ func (a *App) ReloadLinks(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	a.engine.SetLinks(links)
+	engine.SetLinks(links)
 
 	enabled := 0
 	for _, l := range links {
@@ -149,73 +213,102 @@ func (a *App) ReloadLinks(ctx context.Context) error {
 
 // Run поднимает всё и держит до отмены контекста.
 func (a *App) Run(ctx context.Context) error {
-	// Отмена по любой причине гасит остальные части, иначе процесс завис бы
-	// на одной живой горутине после падения соседней.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	var (
-		wg      sync.WaitGroup
-		errOnce sync.Once
-		runErr  error
-	)
-	fail := func(err error) {
-		if err == nil || errors.Is(err, context.Canceled) {
-			return
+	var wg sync.WaitGroup
+	var runErr error
+
+	// Веб живёт отдельно от соединений и переживает их пересоздание: настройки
+	// правят именно в нём, и он не должен исчезать в момент применения.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := a.serve(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			runErr = err
+			cancel()
 		}
-		errOnce.Do(func() { runErr = err })
-		cancel()
-	}
+	}()
 
-	if a.shs != nil {
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			fail(a.shs.Run(ctx))
-		}()
-		go func() {
-			defer wg.Done()
-			a.consumeEvents(ctx)
-		}()
-	}
-
-	if a.mqtt != nil {
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			fail(a.mqtt.Run(ctx))
-		}()
-		go func() {
-			defer wg.Done()
-			a.consumeMessages(ctx)
-		}()
-
-		// Режим обучения: подписка на всю шину наполняет снифер, из которого
-		// в вебе выбираются топики для связок.
-		if err := a.mqtt.Subscribe(mqtt.LearningFilter, 0); err != nil {
-			a.log.Error("подписка на шину", "err", err)
-		}
-	}
-
-	// Проверка обновлений живёт отдельно от всего остального: интернета на
-	// объекте может не быть вовсе, и её неудача ничего не роняет.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		a.update.Run(ctx)
 	}()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		fail(a.serve(ctx))
-	}()
+	a.runConnections(ctx)
 
 	wg.Wait()
 	if runErr != nil {
 		return runErr
 	}
 	return ctx.Err()
+}
+
+// runConnections держит соединения и поднимает их заново после правки
+// настроек, пока не отменён общий контекст.
+func (a *App) runConnections(ctx context.Context) {
+	for {
+		sessionCtx, stop := context.WithCancel(ctx)
+
+		a.mu.Lock()
+		a.stopSession = stop
+		a.mu.Unlock()
+
+		if err := a.connect(sessionCtx); err != nil {
+			a.log.Error("не удалось создать соединения", "err", err)
+		}
+
+		shsClient, mqttClient, engine := a.clients()
+
+		var wg sync.WaitGroup
+		if shsClient != nil {
+			wg.Add(2)
+			go func() { defer wg.Done(); _ = shsClient.Run(sessionCtx) }()
+			go func() { defer wg.Done(); a.consumeEvents(sessionCtx, shsClient, engine) }()
+		}
+		if mqttClient != nil {
+			wg.Add(2)
+			go func() { defer wg.Done(); _ = mqttClient.Run(sessionCtx) }()
+			go func() { defer wg.Done(); a.consumeMessages(sessionCtx, mqttClient, engine) }()
+
+			// Режим обучения: подписка на всю шину наполняет снифер, из
+			// которого в вебе выбираются топики для связок.
+			if err := mqttClient.Subscribe(mqtt.LearningFilter, 0); err != nil {
+				a.log.Error("подписка на шину", "err", err)
+			}
+		}
+
+		<-sessionCtx.Done()
+		wg.Wait()
+		stop()
+
+		// Отменён общий контекст — это остановка демона, а не применение
+		// настроек: выходим.
+		if ctx.Err() != nil {
+			return
+		}
+		a.log.Info("настройки изменились, поднимаем соединения заново")
+	}
+}
+
+// Reconfigure заново поднимает соединения по текущим настройкам.
+// Вызывается вебом после сохранения настроек.
+func (a *App) Reconfigure() {
+	a.mu.Lock()
+	stop := a.stopSession
+	a.mu.Unlock()
+
+	if stop != nil {
+		stop()
+	}
+}
+
+// Restart завершает процесс, чтобы systemd поднял его заново. Нужен после
+// обновления: работающий процесс продолжает жить со старым кодом.
+func (a *App) Restart() {
+	a.log.Info("завершаемся для перезапуска")
+	os.Exit(0)
 }
 
 // eventSummaryPeriod — как часто в журнал уходит сводка по событиям.
@@ -227,7 +320,7 @@ func (a *App) Run(ctx context.Context) error {
 const eventSummaryPeriod = time.Minute
 
 // consumeEvents проводит события из умного дома через движок связок.
-func (a *App) consumeEvents(ctx context.Context) {
+func (a *App) consumeEvents(ctx context.Context, client *shs.Client, engine *link.Engine) {
 	var events, syncs uint64
 	summary := time.NewTicker(eventSummaryPeriod)
 	defer summary.Stop()
@@ -244,7 +337,7 @@ func (a *App) consumeEvents(ctx context.Context) {
 				events, syncs = 0, 0
 			}
 
-		case e, ok := <-a.shs.Events():
+		case e, ok := <-client.Events():
 			if !ok {
 				return
 			}
@@ -259,7 +352,7 @@ func (a *App) consumeEvents(ctx context.Context) {
 				"len", len(e.Payload),
 				"sync", e.Sync)
 
-			a.engine.OnEvent(ctx, link.Event{
+			engine.OnEvent(ctx, link.Event{
 				ID:      e.ID,
 				SubID:   e.SubID,
 				Payload: e.Payload,
@@ -273,12 +366,12 @@ func (a *App) consumeEvents(ctx context.Context) {
 //
 // В снифер они уже осели при приёме, здесь остаётся только раскладывание по
 // элементам умного дома.
-func (a *App) consumeMessages(ctx context.Context) {
+func (a *App) consumeMessages(ctx context.Context, client *mqtt.Client, engine *link.Engine) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case m, ok := <-a.mqtt.Messages():
+		case m, ok := <-client.Messages():
 			if !ok {
 				return
 			}
@@ -287,27 +380,26 @@ func (a *App) consumeMessages(ctx context.Context) {
 				"payload", string(m.Payload),
 				"retained", m.Retained)
 
-			a.engine.OnMessage(ctx, m.Topic, m.Payload)
+			engine.OnMessage(ctx, m.Topic, m.Payload)
 		}
 	}
 }
 
 // serve поднимает веб-интерфейс и держит его до отмены контекста.
 func (a *App) serve(ctx context.Context) error {
-	status := web.Status{}
-	if a.shs != nil {
-		status.SHS = a.shs.Status
-	}
-	if a.mqtt != nil {
-		status.MQTT = a.mqtt.Status
-		status.Topics = a.mqtt.Topics
-	}
-	if a.engine != nil {
-		status.Links = a.engine.Stats
+	status := web.Status{
+		SHS:    a.shsStatus,
+		MQTT:   a.mqttStatus,
+		Topics: a.topics,
+		Links:  a.linkStats,
 	}
 	status.Elements = a.Elements
 	status.Reload = a.ReloadLinks
 	status.Update = a.update.Info
+	status.Log = a.ring.Entries
+	status.Reconfigure = a.Reconfigure
+	status.Upgrade = a.update.Apply
+	status.Restart = a.Restart
 
 	srv := &http.Server{
 		Addr:    a.addr,

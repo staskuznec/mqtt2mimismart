@@ -19,21 +19,30 @@ const (
 )
 
 // New собирает журнал. Уровень: debug, info, warn, error.
-func New(w io.Writer, level, format string) (*slog.Logger, error) {
+//
+// Кроме обычного вывода записи складываются в кольцо: шлюз работает службой, и
+// последние сообщения должны быть видны прямо в вебе — иначе понять, почему не
+// подключается брокер, можно только через journalctl.
+func New(w io.Writer, level, format string) (*slog.Logger, *Ring, error) {
 	lvl, err := parseLevel(level)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	opts := &slog.HandlerOptions{Level: lvl}
+
+	var base slog.Handler
 	switch strings.ToLower(strings.TrimSpace(format)) {
 	case "", FormatText:
-		return slog.New(slog.NewTextHandler(w, opts)), nil
+		base = slog.NewTextHandler(w, opts)
 	case FormatJSON:
-		return slog.New(slog.NewJSONHandler(w, opts)), nil
+		base = slog.NewJSONHandler(w, opts)
 	default:
-		return nil, fmt.Errorf("формат журнала %q: допустимы %s и %s", format, FormatText, FormatJSON)
+		return nil, nil, fmt.Errorf("формат журнала %q: допустимы %s и %s", format, FormatText, FormatJSON)
 	}
+
+	ring := NewRing()
+	return slog.New(&recorder{next: base, ring: ring}), ring, nil
 }
 
 func parseLevel(level string) (slog.Level, error) {

@@ -8,9 +8,14 @@ package update
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,8 +23,11 @@ import (
 )
 
 const (
+	// repo — где живут релизы.
+	repo = "staskuznec/mqtt2mimismart"
+
 	// releasesURL — публичный API GitHub, без ключа и без учётной записи.
-	releasesURL = "https://api.github.com/repos/staskuznec/mqtt2mimismart/releases/latest"
+	releasesURL = "https://api.github.com/repos/" + repo + "/releases/latest"
 
 	// checkInterval — как часто спрашиваем. Раз в сутки: релизы выходят реже,
 	// а у неавторизованного доступа к API есть предел обращений.
@@ -172,4 +180,112 @@ func parse(v string) ([3]int, bool) {
 		out[i] = n
 	}
 	return out, true
+}
+
+// Apply скачивает бинарник нужной версии и заменяет им работающий.
+//
+// Демон после этого должен завершиться, а поднять его обратно — дело systemd.
+// Подменять себя на ходу нельзя: работающий процесс продолжает жить со старым
+// кодом, и пока он не перезапустится, ничего не меняется.
+//
+// Сверка контрольной суммы обязательна: дальше этот файл запускается как
+// служба, и без неё это было бы «выполнить то, что пришло».
+func (c *Checker) Apply(ctx context.Context) error {
+	info := c.Info()
+	if info.Latest == "" {
+		info = c.Check(ctx)
+	}
+	if !info.Available {
+		return fmt.Errorf("обновляться не на что: установлена %s", info.Current)
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("не удалось определить свой путь: %w", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+
+	asset := "mqtt2mimismart-" + assetSuffix()
+	base := "https://github.com/" + repo + "/releases/download/" + info.Latest
+
+	binary, err := c.download(ctx, base+"/"+asset)
+	if err != nil {
+		return err
+	}
+
+	sums, err := c.download(ctx, base+"/SHA256SUMS")
+	if err != nil {
+		return fmt.Errorf("не удалось получить контрольные суммы: %w", err)
+	}
+	want, err := sumFor(sums, asset)
+	if err != nil {
+		return err
+	}
+	got := fmt.Sprintf("%x", sha256.Sum256(binary))
+	if got != want {
+		return fmt.Errorf("контрольная сумма не сошлась: файл повреждён или подменён")
+	}
+
+	// Пишем рядом и переименовываем: замена в пределах каталога атомарна, и
+	// служба не увидит наполовину записанный файл.
+	dir := filepath.Dir(exe)
+	tmp := filepath.Join(dir, ".mqtt2mimismart.new")
+	if err := os.WriteFile(tmp, binary, 0o755); err != nil {
+		return fmt.Errorf("не удалось записать новый бинарник: %w", err)
+	}
+
+	// Прежний сохраняем: откат должен быть в одно движение.
+	_ = os.Rename(exe, filepath.Join(dir, "mqtt2mimismart.old"))
+
+	if err := os.Rename(tmp, exe); err != nil {
+		return fmt.Errorf("не удалось заменить бинарник: %w", err)
+	}
+	return nil
+}
+
+// download качает файл целиком.
+func (c *Checker) download(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Скачивание дольше проверки версии: бинарник весит около десяти мегабайт,
+	// а канал на объекте бывает узким.
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("не удалось скачать %s: %w", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("сервер ответил %s на %s", resp.Status, url)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+}
+
+// assetSuffix — имя файла релиза под текущую платформу.
+func assetSuffix() string {
+	switch runtime.GOARCH {
+	case "arm":
+		return "linux-armv7"
+	case "arm64":
+		return "linux-arm64"
+	default:
+		return "linux-amd64"
+	}
+}
+
+// sumFor достаёт из SHA256SUMS сумму нужного файла.
+func sumFor(sums []byte, asset string) (string, error) {
+	for _, line := range strings.Split(string(sums), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == asset {
+			return fields[0], nil
+		}
+	}
+	return "", fmt.Errorf("в SHA256SUMS нет строки для %s", asset)
 }

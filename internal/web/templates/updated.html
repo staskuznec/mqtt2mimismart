@@ -1,0 +1,12 @@
+{{define "layout"}}
+{{if .OK}}
+  <div class="msg ok">
+    Обновление установлено. Шлюз перезапускается — страница станет доступна
+    через несколько секунд.
+  </div>
+  <script>setTimeout(function () { location.href = "."; }, 6000);</script>
+{{else}}
+  <div class="msg bad">Обновиться не удалось: {{.Error}}</div>
+  <p><a href=".">Вернуться</a></p>
+{{end}}
+{{end}}

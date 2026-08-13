@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/staskuznec/mqtt2mimismart/internal/link"
+	"github.com/staskuznec/mqtt2mimismart/internal/logging"
 	"github.com/staskuznec/mqtt2mimismart/internal/logic"
 	"github.com/staskuznec/mqtt2mimismart/internal/mqtt"
 	"github.com/staskuznec/mqtt2mimismart/internal/shs"
@@ -36,6 +37,18 @@ type Status struct {
 
 	// Update — что известно про доступную версию.
 	Update func() update.Info
+
+	// Log — последние записи журнала: шлюз работает службой, и увидеть
+	// причину неполадки надо не выходя из браузера.
+	Log func(limit int, minLevel slog.Level) []logging.Entry
+
+	// Reconfigure поднимает соединения заново по свежим настройкам.
+	Reconfigure func()
+
+	// Upgrade скачивает и ставит новую версию, Restart завершает процесс,
+	// чтобы systemd поднял его заново.
+	Upgrade func(context.Context) error
+	Restart func()
 
 	// Reload заставляет движок перечитать связки. Вызывается после каждой
 	// правки: иначе изменение вступало бы в силу только после перезапуска.
@@ -68,6 +81,8 @@ func Handler(log *slog.Logger, db *store.Store, version, basePath string, status
 	mux.HandleFunc("POST /links/{id}/delete", s.deleteLink)
 	mux.HandleFunc("POST /links/preview", s.previewLink)
 	mux.HandleFunc("GET /elements", s.pageElements)
+	mux.HandleFunc("GET /log", s.pageLog)
+	mux.HandleFunc("POST /update", s.applyUpdate)
 
 	mux.HandleFunc("GET /devices", s.pageDevices)
 	mux.HandleFunc("GET /devices/new", s.pageDeviceForm)

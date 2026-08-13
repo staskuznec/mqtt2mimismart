@@ -46,11 +46,14 @@ func buildPages(base string) map[string]*template.Template {
 		"devices":     parse("devices.html"),
 		"device_form": parse("device_form.html"),
 		"templates":   parse("templates.html"),
+		"log":         parse("log.html"),
 
 		// Проба возвращается кусочком страницы, поэтому общее оформление ей
 		// не нужно — она подставляется в уже открытую форму.
 		"preview": template.Must(template.New("preview.html").Funcs(funcs).
 			ParseFS(templateFS, "templates/preview.html")),
+		"updated": template.Must(template.New("updated.html").Funcs(funcs).
+			ParseFS(templateFS, "templates/updated.html")),
 	}
 }
 
@@ -200,6 +203,12 @@ func (s *server) saveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.log.Info("настройки сохранены", "mqtt", cfg.MQTTAddr, "shs", cfg.SHSAddr)
+
+	// Соединения поднимаются заново сразу: гнать человека в консоль ради
+	// перезапуска службы оттуда, где он только что всё настроил, — издевательство.
+	if s.status.Reconfigure != nil {
+		s.status.Reconfigure()
+	}
 	s.redirect(w, r, "/settings?saved=1")
 }
 

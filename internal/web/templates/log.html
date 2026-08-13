@@ -1,0 +1,34 @@
+{{define "content"}}
+<h1>Журнал</h1>
+<p class="hint">
+  Последние записи шлюза — то, что он делал и на чём спотыкался. Полная история
+  живёт в journald: <code>journalctl -u mqtt2mimismart -f</code>
+</p>
+
+<div class="toolbar">
+  <a href="log?level=info"  class="btn {{if ne .Level "info"}}ghost{{end}}">Обычные</a>
+  <a href="log?level=warn"  class="btn {{if ne .Level "warn"}}ghost{{end}}">Предупреждения</a>
+  <a href="log?level=error" class="btn {{if ne .Level "error"}}ghost{{end}}">Ошибки</a>
+  <a href="log?level=debug" class="btn {{if ne .Level "debug"}}ghost{{end}}">Подробно</a>
+</div>
+
+{{if .Entries}}
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Время</th><th>Уровень</th><th>Сообщение</th><th>Подробности</th></tr></thead>
+  <tbody>
+  {{range .Entries}}
+    <tr>
+      <td class="mono">{{.Time}}</td>
+      <td>{{if .Class}}<span class="pill {{.Class}}">{{.Level}}</span>{{else}}<span class="hint">{{.Level}}</span>{{end}}</td>
+      <td>{{.Text}}</td>
+      <td class="mono hint">{{.Detail}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{else}}
+<p class="empty">Записей этого уровня пока нет.</p>
+{{end}}
+{{end}}

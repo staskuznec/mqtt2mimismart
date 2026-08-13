@@ -4,8 +4,8 @@
 
 {{if .Saved}}
   <div class="msg ok">
-    Сохранено. Соединения поднимаются при старте, поэтому изменения применятся
-    после перезапуска: <code>systemctl restart mqtt2mimismart</code>
+    Сохранено. Соединения подняты заново — смотрите
+    <a href=".">Обзор</a>, а если что-то не так, <a href="log">Журнал</a>.
   </div>
 {{end}}
 {{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}

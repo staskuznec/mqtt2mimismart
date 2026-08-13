@@ -5,8 +5,11 @@
 {{with .Update}}{{if .Available}}
   <div class="msg ok">
     Вышла версия <b>{{.Latest}}</b>, установлена {{.Current}}.
-    Обновление: <code>curl -fsSL https://raw.githubusercontent.com/staskuznec/mqtt2mimismart/main/install.sh | sudo sh</code>
-    {{with .URL}} · <a href="{{.}}">что изменилось</a>{{end}}
+    {{with .URL}}<a href="{{.}}">Что изменилось</a>{{end}}
+    <form method="post" action="update" style="display:inline"
+          onsubmit="return confirm('Обновить шлюз? Он перезапустится, связь прервётся на несколько секунд.')">
+      <button type="submit" style="margin-top:10px">Обновить</button>
+    </form>
   </div>
 {{end}}{{end}}
 
