@@ -12,7 +12,7 @@
       <option value="">— выберите модель —</option>
       {{range .Templates}}
         <option value="{{.Key}}" {{if eq .Key $.Selected.Key}}selected{{end}}>
-          {{.Name}}{{if not .Builtin}} · загруженный{{end}}</option>
+          {{.Name}}{{if not .Bundled}} · загруженный{{end}}</option>
       {{end}}
     </select></label>
   <input type="hidden" name="prefix" value="{{.Prefix}}">

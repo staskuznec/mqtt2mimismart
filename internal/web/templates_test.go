@@ -1,10 +1,18 @@
 package web
 
 import (
+	"bytes"
 	"io/fs"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/staskuznec/mqtt2mimismart/internal/devtmpl"
+	"github.com/staskuznec/mqtt2mimismart/internal/logic"
+	"github.com/staskuznec/mqtt2mimismart/internal/mqtt"
+	"github.com/staskuznec/mqtt2mimismart/internal/shs"
+	"github.com/staskuznec/mqtt2mimismart/internal/store"
+	"github.com/staskuznec/mqtt2mimismart/internal/update"
 )
 
 // Абсолютный адрес в шаблоне ломает работу за прокси: шлюз стоит в подкаталоге
@@ -138,5 +146,119 @@ func TestTemplateBlocksCloseAtEnd(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("обход шаблонов: %v", err)
+	}
+}
+
+// Страницы должны не только разбираться, но и отрисовываться.
+//
+// Разбор проверяет синтаксис, а обращение к несуществующему полю обнаруживается
+// только при выполнении: отрисовка обрывается на середине, страница приходит
+// урезанной, и в браузере это выглядит как «список из одного пункта, дальше
+// ничего». Ровно так уехало обращение к .Builtin вместо .Bundled.
+func TestPagesRender(t *testing.T) {
+	precision := 1
+	item := devtmpl.Item{
+		Template: devtmpl.Template{
+			Key: "sample", Name: "Пример", Model: "X", Note: "заметка",
+			Roles: []devtmpl.Role{{Key: "ch0", Title: "Канал", Required: true}},
+			Links: []devtmpl.LinkSpec{{
+				Name: "Состояние", Direction: "in", Role: "ch0",
+				Topic: "{{prefix}}/relay/0", Encode: "byte", Precision: &precision,
+			}},
+		},
+		Bundled: true,
+	}
+	element := elementOption{Addr: "758:4", Label: "Прихожая → Свет (lamp)", Type: "lamp"}
+
+	mqttStatus := mqtt.Status{Connected: true, ClientID: "gw", KnownTopics: 3}
+	shsStatus := shs.Status{Phase: shs.PhaseConnected, ClientID: 2031}
+	upd := update.Info{Current: "v1.0.0", Latest: "v1.1.0", Available: true, URL: "https://example"}
+
+	cases := map[string]any{
+		"overview": overviewData{
+			Title: "Обзор", Nav: "overview", Version: "v1", Configured: true,
+			MQTT: &mqttStatus, SHS: &shsStatus, SHSPhase: "на связи", SHSDot: "ok",
+			Update: &upd, Checked: "5 с назад",
+			Links: linksSummary{Total: 2, Enabled: 1, Delivered: 10},
+		},
+		"settings": settingsData{Title: "Настройки", Nav: "settings", Saved: true},
+		"topics": topicsData{
+			Title: "Топики", Nav: "topics", Total: 1,
+			Groups: []topicGroup{{Prefix: "shellies/a", Topics: []topicRow{{
+				Topic: "shellies/a/relay/0", Short: "relay/0", Payload: "on",
+				Kind: "text", Count: 5, Ago: "3 с назад",
+			}}}},
+		},
+		"links": linksData{
+			Title: "Связки", Nav: "links", Total: 1,
+			Groups: []linkGroup{{Device: "Реле", Prefix: "shellies/a", Links: []linkRow{{
+				ID: 1, Enabled: true, Arrow: "шина ⇄ дом", Topic: "shellies/a/relay/0",
+				CommandTopic: "shellies/a/relay/0/command", Addr: "758:4",
+				Name: "Свет", Form: "byte", LastValue: "1", Paired: true,
+			}}}},
+		},
+		"link_form": linkFormData{
+			Title: "Связка", Nav: "links", New: true, Both: true,
+			Elements: []elementOption{element}, Topics: []string{"shellies/a/relay/0"},
+			ValuesText: "on = 1", ValuesOut: "toggle = toggle",
+			Decode: "lamp", Kind: "command", QoS: 1,
+		},
+		"elements": elementsData{
+			Title: "Элементы", Nav: "elements",
+			Elements: []logic.Element{{ID: 758, SubID: 4, Name: "Свет", Type: "lamp", Area: "Прихожая"}},
+		},
+		"devices": devicesData{
+			Title: "Устройства", Nav: "devices",
+			Devices: []deviceRow{{Device: store.Device{ID: 1, Name: "Реле",
+				TopicPrefix: "shellies/a", Model: "X", Template: "sample", Online: true},
+				Links: 4, Enabled: 3}},
+		},
+		"device_form": deviceFormData{
+			Title: "Устройство", Nav: "devices", DeviceID: 1,
+			Templates: []devtmpl.Item{item}, Selected: item.Template, HasChoice: true,
+			Name: "Реле", Prefix: "shellies/a",
+			Prefixes: []prefixOption{{Prefix: "shellies/a", Topics: 5, Known: true}},
+			Elements: []elementOption{element},
+			Roles: []roleOption{{Role: item.Roles[0], Elements: []elementOption{element},
+				Narrowed: true, Selected: "758:4"}},
+		},
+		"templates": templatesData{
+			Title: "Профили", Nav: "templates", Dir: "/tmp/profiles",
+			Templates: []devtmpl.Item{item}, Saved: "sample",
+		},
+		"template_edit": templateEditData{
+			Title: "Профиль", Nav: "templates", Key: "sample",
+			Body: "{}", Bundled: true,
+		},
+		"log": logData{
+			Title: "Журнал", Nav: "log", Level: "info",
+			Entries: []logRow{{Time: "12:00:00", Level: "error", Class: "bad",
+				Text: "ошибка", Detail: "addr=1:2"}},
+		},
+		"preview": previewResult{OK: true, Value: "1", Hex: "01", Kind: "byte"},
+		"updated": updateResult{OK: true},
+	}
+
+	pages := buildPages("/mqtt")
+	for name := range pages {
+		if _, ok := cases[name]; !ok {
+			t.Errorf("для страницы %q нет данных в тесте — она не проверяется", name)
+		}
+	}
+
+	for name, data := range cases {
+		tmpl, ok := pages[name]
+		if !ok {
+			t.Errorf("страница %q не собрана", name)
+			continue
+		}
+		var buf bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&buf, "layout", data); err != nil {
+			t.Errorf("%s: отрисовка сорвалась: %v", name, err)
+			continue
+		}
+		if buf.Len() == 0 {
+			t.Errorf("%s: пустая страница", name)
+		}
 	}
 }
