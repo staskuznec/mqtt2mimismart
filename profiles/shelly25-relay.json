@@ -2,139 +2,232 @@
   "name": "Shelly 2.5 — режим реле",
   "model": "SHSW-25",
   "note": "Два канала, измерение мощности и энергии по каждому, температура устройства. Топики мощности и энергии — relay/<i>/power и relay/<i>/energy, энергия в ватт-минутах (множитель до кВт·ч уже задан). Напряжения Shelly 2.5 по MQTT не публикует вовсе. Роли, для которых элемент не выбран, пропускаются: не нужны показания — не назначайте их. Устройство должно быть в режиме реле: в режиме роллера топиков relay/* не существует вовсе, для него отдельный шаблон.",
-
   "roles": [
-    {"key": "ch0",       "title": "Канал 0 (клемма O1) — свет или нагрузка", "form": "byte",   "required": true,
-     "hint": "лампа: состояние приходит с устройства, нажатие уходит командой"},
-    {"key": "ch1",       "title": "Канал 1 (клемма O2) — свет или нагрузка", "form": "byte",
-     "hint": "вторая лампа; не нужна — оставьте пустым"},
-
-    {"key": "power0",    "title": "Канал 0 — мощность, Вт",        "form": "text",
-     "hint": "текстовый элемент: ватты не помещаются в датчик"},
-    {"key": "power1",    "title": "Канал 1 — мощность, Вт",        "form": "text"},
-    {"key": "energy0",   "title": "Канал 0 — энергия, кВт·ч",      "form": "text"},
-    {"key": "energy1",   "title": "Канал 1 — энергия, кВт·ч",      "form": "text"},
-
-    {"key": "temp",      "title": "Температура устройства, °C",    "form": "sensor",
-     "hint": "обычный датчик температуры"},
-    {"key": "overtemp",  "title": "Признак перегрева",             "form": "byte"},
-
-    {"key": "input0",    "title": "Вход SW1 — положение клеммы",   "form": "byte",
-     "hint": "только чтение; физические выключатели обычно заведены в умный дом напрямую"},
-    {"key": "input1",    "title": "Вход SW2 — положение клеммы",   "form": "byte"},
-
-    {"key": "overpower0","title": "Канал 0 — порог перегрузки, Вт",  "form": "text",
-     "hint": "мощность, на которой срабатывает защита; величина справочная"},
-    {"key": "overpower1","title": "Канал 1 — порог перегрузки, Вт",  "form": "text"},
-
-    {"key": "online",    "title": "Устройство на связи",           "form": "byte",
-     "hint": "по признаку присутствия брокера: пропало питание — элемент погаснет"}
+    {
+      "key": "ch0",
+      "title": "Канал 0 (клемма O1) — свет или нагрузка",
+      "form": "byte",
+      "required": true,
+      "hint": "лампа: состояние приходит с устройства, нажатие уходит командой"
+    },
+    {
+      "key": "ch1",
+      "title": "Канал 1 (клемма O2) — свет или нагрузка",
+      "form": "byte",
+      "hint": "вторая лампа; не нужна — оставьте пустым"
+    },
+    {
+      "key": "power0",
+      "title": "Канал 0 — мощность, Вт",
+      "form": "text",
+      "hint": "текстовый элемент: ватты не помещаются в датчик"
+    },
+    {
+      "key": "power1",
+      "title": "Канал 1 — мощность, Вт",
+      "form": "text"
+    },
+    {
+      "key": "energy0",
+      "title": "Канал 0 — энергия, кВт·ч",
+      "form": "text"
+    },
+    {
+      "key": "energy1",
+      "title": "Канал 1 — энергия, кВт·ч",
+      "form": "text"
+    },
+    {
+      "key": "temp",
+      "title": "Температура устройства, °C",
+      "form": "sensor",
+      "hint": "обычный датчик температуры"
+    },
+    {
+      "key": "overtemp",
+      "title": "Признак перегрева",
+      "form": "byte"
+    },
+    {
+      "key": "input0",
+      "title": "Вход SW1 — положение клеммы",
+      "form": "byte",
+      "hint": "только чтение; физические выключатели обычно заведены в умный дом напрямую"
+    },
+    {
+      "key": "input1",
+      "title": "Вход SW2 — положение клеммы",
+      "form": "byte"
+    },
+    {
+      "key": "overpower0",
+      "title": "Канал 0 — порог перегрузки, Вт",
+      "form": "text",
+      "hint": "мощность, на которой срабатывает защита; величина справочная"
+    },
+    {
+      "key": "overpower1",
+      "title": "Канал 1 — порог перегрузки, Вт",
+      "form": "text"
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "hint": "по признаку присутствия брокера: пропало питание — элемент погаснет"
+    }
   ],
-
   "links": [
     {
       "name": "Канал 0 — состояние",
-      "direction": "in", "role": "ch0", "pair": "ch0",
+      "direction": "in",
+      "role": "ch0",
+      "pair": "ch0",
       "topic": "{{prefix}}/relay/0",
       "encode": "byte",
-      "values": {"on": "1", "off": "0", "overpower": "1"}
+      "values": {
+        "on": "1",
+        "off": "0",
+        "overpower": "1"
+      }
     },
     {
       "name": "Канал 0 — команда",
-      "direction": "out", "role": "ch0", "pair": "ch0",
+      "direction": "out",
+      "role": "ch0",
+      "pair": "ch0",
       "topic": "{{prefix}}/relay/0/command",
-      "kind": "command", "decode": "lamp", "qos": 1,
-      "values": {"on": "on", "off": "off", "toggle": "toggle"}
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "on",
+        "off": "off",
+        "toggle": "toggle"
+      }
     },
-
     {
       "name": "Канал 1 — состояние",
-      "direction": "in", "role": "ch1", "pair": "ch1",
+      "direction": "in",
+      "role": "ch1",
+      "pair": "ch1",
       "topic": "{{prefix}}/relay/1",
       "encode": "byte",
-      "values": {"on": "1", "off": "0", "overpower": "1"}
+      "values": {
+        "on": "1",
+        "off": "0",
+        "overpower": "1"
+      }
     },
     {
       "name": "Канал 1 — команда",
-      "direction": "out", "role": "ch1", "pair": "ch1",
+      "direction": "out",
+      "role": "ch1",
+      "pair": "ch1",
       "topic": "{{prefix}}/relay/1/command",
-      "kind": "command", "decode": "lamp", "qos": 1,
-      "values": {"on": "on", "off": "off", "toggle": "toggle"}
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "on",
+        "off": "off",
+        "toggle": "toggle"
+      }
     },
-
     {
       "name": "Канал 0 — мощность",
-      "direction": "in", "role": "power0",
+      "direction": "in",
+      "role": "power0",
       "topic": "{{prefix}}/relay/0/power",
-      "encode": "text", "unit": " Вт", "precision": 1
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
     },
     {
       "name": "Канал 1 — мощность",
-      "direction": "in", "role": "power1",
+      "direction": "in",
+      "role": "power1",
       "topic": "{{prefix}}/relay/1/power",
-      "encode": "text", "unit": " Вт", "precision": 1
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
     },
-
     {
       "name": "Канал 0 — энергия",
-      "direction": "in", "role": "energy0",
+      "direction": "in",
+      "role": "energy0",
       "topic": "{{prefix}}/relay/0/energy",
-      "encode": "text", "unit": " кВт·ч", "precision": 2,
-      "scale": 0.000016666666666666667
+      "encode": "text",
+      "unit": " кВт",
+      "precision": 1,
+      "scale": 1.6666666666666667e-05
     },
     {
       "name": "Канал 1 — энергия",
-      "direction": "in", "role": "energy1",
+      "direction": "in",
+      "role": "energy1",
       "topic": "{{prefix}}/relay/1/energy",
-      "encode": "text", "unit": " кВт·ч", "precision": 2,
-      "scale": 0.000016666666666666667
+      "encode": "text",
+      "unit": " кВт",
+      "precision": 1,
+      "scale": 1.6666666666666667e-05
     },
-
     {
       "name": "Канал 0 — порог перегрузки",
-      "direction": "in", "role": "overpower0",
+      "direction": "in",
+      "role": "overpower0",
       "topic": "{{prefix}}/relay/0/overpower_value",
-      "encode": "text", "unit": " Вт", "precision": 0
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
     },
     {
       "name": "Канал 1 — порог перегрузки",
-      "direction": "in", "role": "overpower1",
+      "direction": "in",
+      "role": "overpower1",
       "topic": "{{prefix}}/relay/1/overpower_value",
-      "encode": "text", "unit": " Вт", "precision": 0
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
     },
-
     {
       "name": "Температура устройства",
-      "direction": "in", "role": "temp",
+      "direction": "in",
+      "role": "temp",
       "topic": "{{prefix}}/temperature",
       "encode": "sensor"
     },
     {
       "name": "Перегрев",
-      "direction": "in", "role": "overtemp",
+      "direction": "in",
+      "role": "overtemp",
       "topic": "{{prefix}}/overtemperature",
       "encode": "byte"
     },
-
     {
       "name": "Вход SW1",
-      "direction": "in", "role": "input0",
+      "direction": "in",
+      "role": "input0",
       "topic": "{{prefix}}/input/0",
       "encode": "byte"
     },
     {
       "name": "Вход SW2",
-      "direction": "in", "role": "input1",
+      "direction": "in",
+      "role": "input1",
       "topic": "{{prefix}}/input/1",
       "encode": "byte"
     },
-
     {
       "name": "На связи",
-      "direction": "in", "role": "online",
+      "direction": "in",
+      "role": "online",
       "topic": "{{prefix}}/online",
       "encode": "byte",
-      "values": {"true": "1", "false": "0"}
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
     }
   ]
 }

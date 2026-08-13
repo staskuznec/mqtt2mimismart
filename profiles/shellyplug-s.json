@@ -97,7 +97,7 @@
       "topic": "{{prefix}}/relay/0/power",
       "encode": "text",
       "unit": " Вт",
-      "precision": 1
+      "precision": 0
     },
     {
       "name": "Энергия канала 0",
@@ -105,8 +105,8 @@
       "role": "energy0",
       "topic": "{{prefix}}/relay/0/energy",
       "encode": "text",
-      "unit": " кВт·ч",
-      "precision": 2,
+      "unit": " кВт",
+      "precision": 1,
       "scale": 1.6666666666666667e-05
     },
     {

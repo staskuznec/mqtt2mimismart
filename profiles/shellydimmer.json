@@ -132,7 +132,7 @@
       "topic": "{{prefix}}/light/0/power",
       "encode": "text",
       "unit": " Вт",
-      "precision": 1
+      "precision": 0
     },
     {
       "name": "Энергия",
@@ -140,8 +140,8 @@
       "role": "energy0",
       "topic": "{{prefix}}/light/0/energy",
       "encode": "text",
-      "unit": " кВт·ч",
-      "precision": 2,
+      "unit": " кВт",
+      "precision": 1,
       "scale": 1.6666666666666667e-05
     },
     {

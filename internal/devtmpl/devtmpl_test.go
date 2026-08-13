@@ -1,6 +1,7 @@
 package devtmpl
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -153,8 +154,8 @@ func TestEnergyScale(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ToWire: %v", err)
 		}
-		if w.Text != "3.52 кВт·ч" {
-			t.Errorf("энергия = %q, ожидалось %q", w.Text, "3.52 кВт·ч")
+		if w.Text != "3.5 кВт" {
+			t.Errorf("энергия = %q, ожидалось %q", w.Text, "3.5 кВт")
 		}
 		return
 	}
@@ -179,5 +180,43 @@ func TestParseRejectsBroken(t *testing.T) {
 				t.Error("битый шаблон принят")
 			}
 		})
+	}
+}
+
+// Единицы во всех профилях приведены к одному виду: мощность и напряжение без
+// знаков после запятой, энергия — с одним, в киловаттах. Разнобой замечают уже
+// на объекте, где показания стоят рядом на одном экране.
+func TestUnitsAreConsistent(t *testing.T) {
+	all, err := Builtin()
+	if err != nil {
+		t.Fatalf("Builtin: %v", err)
+	}
+
+	want := map[string]int{
+		" Вт":  0,
+		" В":   0,
+		" кВт": 1,
+	}
+
+	for _, tmpl := range all {
+		for _, l := range tmpl.Links {
+			if l.Unit == "" {
+				continue
+			}
+			digits, known := want[l.Unit]
+			if !known {
+				t.Errorf("%s, связка «%s»: единица %q не из общего списка",
+					tmpl.Key, l.Name, l.Unit)
+				continue
+			}
+			if l.Precision == nil || *l.Precision != digits {
+				got := "не задано"
+				if l.Precision != nil {
+					got = strconv.Itoa(*l.Precision)
+				}
+				t.Errorf("%s, связка «%s»: у %q знаков после запятой %s, ожидалось %d",
+					tmpl.Key, l.Name, l.Unit, got, digits)
+			}
+		}
 	}
 }

@@ -2,57 +2,99 @@
   "name": "Shelly 2.5 — режим роллера",
   "model": "SHSW-25",
   "note": "Шторы, ворота, маркиза. В режиме роллера устройство не публикует relay/* вовсе — только roller/0. Положение 0–100 ложится в один байт, как раз под элемент штор умного дома.",
-
   "roles": [
-    {"key": "roller",  "title": "Привод — положение и управление", "form": "byte", "required": true,
-     "hint": "элемент штор: положение 0–100 помещается в один байт"},
-    {"key": "power",   "title": "Мощность, Вт",                    "form": "text"},
-    {"key": "energy",  "title": "Энергия, кВт·ч",                  "form": "text"},
-    {"key": "temp",    "title": "Температура устройства, °C",      "form": "sensor"},
-    {"key": "online",  "title": "Устройство на связи",             "form": "byte"}
+    {
+      "key": "roller",
+      "title": "Привод — положение и управление",
+      "form": "byte",
+      "required": true,
+      "hint": "элемент штор: положение 0–100 помещается в один байт"
+    },
+    {
+      "key": "power",
+      "title": "Мощность, Вт",
+      "form": "text"
+    },
+    {
+      "key": "energy",
+      "title": "Энергия, кВт·ч",
+      "form": "text"
+    },
+    {
+      "key": "temp",
+      "title": "Температура устройства, °C",
+      "form": "sensor"
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte"
+    }
   ],
-
   "links": [
     {
       "name": "Положение привода",
-      "direction": "in", "role": "roller", "pair": "roller",
+      "direction": "in",
+      "role": "roller",
+      "pair": "roller",
       "topic": "{{prefix}}/roller/0",
       "encode": "byte",
-      "values": {"open": "100", "close": "0", "stop": "0"}
+      "values": {
+        "open": "100",
+        "close": "0",
+        "stop": "0"
+      }
     },
     {
       "name": "Команда приводу",
-      "direction": "out", "role": "roller", "pair": "roller",
+      "direction": "out",
+      "role": "roller",
+      "pair": "roller",
       "topic": "{{prefix}}/roller/0/command",
-      "kind": "command", "decode": "byte", "qos": 1,
-      "values": {"0": "close", "100": "open"}
+      "kind": "command",
+      "decode": "byte",
+      "qos": 1,
+      "values": {
+        "0": "close",
+        "100": "open"
+      }
     },
-
     {
       "name": "Мощность",
-      "direction": "in", "role": "power",
+      "direction": "in",
+      "role": "power",
       "topic": "{{prefix}}/roller/0/power",
-      "encode": "text", "unit": " Вт", "precision": 1
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
     },
     {
       "name": "Энергия",
-      "direction": "in", "role": "energy",
+      "direction": "in",
+      "role": "energy",
       "topic": "{{prefix}}/roller/0/energy",
-      "encode": "text", "unit": " кВт·ч", "precision": 2,
-      "scale": 0.000016666666666666667
+      "encode": "text",
+      "unit": " кВт",
+      "precision": 1,
+      "scale": 1.6666666666666667e-05
     },
     {
       "name": "Температура устройства",
-      "direction": "in", "role": "temp",
+      "direction": "in",
+      "role": "temp",
       "topic": "{{prefix}}/temperature",
       "encode": "sensor"
     },
     {
       "name": "На связи",
-      "direction": "in", "role": "online",
+      "direction": "in",
+      "role": "online",
       "topic": "{{prefix}}/online",
       "encode": "byte",
-      "values": {"true": "1", "false": "0"}
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
     }
   ]
 }
