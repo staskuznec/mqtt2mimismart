@@ -488,6 +488,11 @@ add_panel_tab() {
     "$PANEL/mqtt-tab.js" > "$PANEL/mqtt-tab.js.tmp" &&
     mv -f "$PANEL/mqtt-tab.js.tmp" "$PANEL/mqtt-tab.js"
 
+  # Файл вкладки должен обновляться кнопкой в вебе, а шлюз работает не от root:
+  # без права на запись он каждый раз просил бы лезть в консоль.
+  chown mqtt2mimismart "$PANEL/mqtt-tab.js" 2>/dev/null || true
+  chmod 0644 "$PANEL/mqtt-tab.js" 2>/dev/null || true
+
   if grep -q "mqtt-tab.js" "$PANEL/index.php" 2>/dev/null; then
     say "Вкладка «MQTT» в панели уже подключена."
     return 0

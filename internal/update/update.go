@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -50,16 +51,21 @@ type Info struct {
 type Checker struct {
 	current string
 	client  *http.Client
+	log     *slog.Logger
 
 	mu   sync.Mutex
 	info Info
 }
 
 // New создаёт проверяльщика для текущей версии.
-func New(current string) *Checker {
+func New(current string, log *slog.Logger) *Checker {
+	if log == nil {
+		log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 	return &Checker{
 		current: current,
 		client:  &http.Client{Timeout: requestTimeout},
+		log:     log,
 		info:    Info{Current: current},
 	}
 }
@@ -242,6 +248,14 @@ func (c *Checker) Apply(ctx context.Context) error {
 	if err := os.Rename(tmp, exe); err != nil {
 		return fmt.Errorf("не удалось заменить бинарник: %w", err)
 	}
+
+	// Вкладка в панели умного дома едет в том же релизе. Её неудача не
+	// отменяет обновления шлюза: он уже заменён и работает.
+	if err := c.updatePanelTab(ctx, info.Latest); err != nil {
+		c.log.Warn("не удалось обновить вкладку в панели",
+			"err", err,
+			"как быть", "запустите install.sh — он положит её от root")
+	}
 	return nil
 }
 
@@ -288,4 +302,71 @@ func sumFor(sums []byte, asset string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("в SHA256SUMS нет строки для %s", asset)
+}
+
+// panelTabPaths — где может лежать файл вкладки для панели умного дома.
+//
+// Обновлять его должен шлюз, а не человек: файл едет в том же релизе, и
+// требовать ради него отдельного похода в консоль — значит однажды получить
+// панель со старой вкладкой и не понять, почему она ведёт себя странно.
+var panelTabPaths = []string{
+	"/home/html/MimiSetup/mqtt-tab.js",
+	"/var/www/html/MimiSetup/mqtt-tab.js",
+	"/home/sh2/web/MimiSetup/mqtt-tab.js",
+	"/var/www/MimiSetup/mqtt-tab.js",
+}
+
+// updatePanelTab обновляет файл вкладки, если он есть и доступен на запись.
+//
+// Неудача здесь не отменяет обновления шлюза: вкладка — украшение поверх
+// работающего шлюза, а не его часть. Поэтому только сообщаем.
+func (c *Checker) updatePanelTab(ctx context.Context, version string) error {
+	path := ""
+	for _, p := range panelTabPaths {
+		if _, err := os.Stat(p); err == nil {
+			path = p
+			break
+		}
+	}
+	if path == "" {
+		return nil // панель не найдена — вкладку и не ставили
+	}
+
+	url := "https://github.com/" + repo + "/releases/download/" + version + "/mimisetup-mqtt-tab.js"
+	body, err := c.download(ctx, url)
+	if err != nil {
+		return err
+	}
+
+	// Прежний адрес шлюза сохраняем: установщик мог подставить туда порт или
+	// другой подкаталог, и затирать его значением по умолчанию нельзя.
+	if old, err := os.ReadFile(path); err == nil {
+		if addr := gatewayURL(string(old)); addr != "" && addr != "/mqtt/" {
+			body = []byte(strings.Replace(string(body),
+				`var GATEWAY_URL = "/mqtt/";`,
+				`var GATEWAY_URL = "`+addr+`";`, 1))
+		}
+	}
+
+	// Пишем рядом и переименовываем: панель может читать файл прямо сейчас.
+	tmp := path + ".new"
+	if err := os.WriteFile(tmp, body, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// gatewayURL достаёт адрес шлюза из файла вкладки.
+func gatewayURL(body string) string {
+	const marker = `var GATEWAY_URL = "`
+	i := strings.Index(body, marker)
+	if i < 0 {
+		return ""
+	}
+	rest := body[i+len(marker):]
+	j := strings.Index(rest, `"`)
+	if j < 0 {
+		return ""
+	}
+	return rest[:j]
 }

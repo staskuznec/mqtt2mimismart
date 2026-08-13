@@ -96,7 +96,7 @@ func New(log *slog.Logger, ring *logging.Ring, db *store.Store,
 
 	a := &App{
 		log: log, ring: ring, db: db, version: version, addr: addr, base: basePath,
-		update: update.New(version),
+		update: update.New(version, log.With("component", "update")),
 	}
 
 	return a, nil
