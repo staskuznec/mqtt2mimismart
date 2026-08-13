@@ -126,6 +126,17 @@ MQTT_GATEWAY_PASS=""
 MQTT_MODE="${MQTT_MODE:-}" # anon | auth
 MQTT_ALREADY=no            # брокер был настроен до нас
 
+# has_listener сообщает, что порт уже кем-то объявлен.
+has_listener() {
+  grep -qs '^[[:space:]]*listener' /etc/mosquitto/mosquitto.conf 2>/dev/null && return 0
+  for f in /etc/mosquitto/conf.d/*.conf; do
+    [ -f "$f" ] || continue
+    [ "$f" = "/etc/mosquitto/conf.d/mqtt2mimismart.conf" ] && continue
+    grep -qs '^[[:space:]]*listener' "$f" && return 0
+  done
+  return 1
+}
+
 # broker_ready сообщает, что брокер уже настроен и работать с ним можно.
 broker_ready() {
   # Слушает порт — значит настроен и запущен. Самый надёжный признак: он не
@@ -205,17 +216,31 @@ setup_mosquitto() {
   # слушает свой порт.
   if broker_ready; then
     detect_broker_mode
+    say ""
     if [ "$MQTT_MODE" = "auth" ]; then
-      say "Брокер уже настроен, с учётными записями — не трогаем."
-      say "При настройке шлюза укажите пользователя и пароль, заведённые ранее."
+      say "Брокер уже настроен, с учётными записями."
     else
-      say "Брокер уже настроен, без учётных записей — не трогаем."
+      say "Брокер уже настроен, без учётных записей: подключиться может любой,"
+      say "кто в сети. По этой шине ходят команды, щёлкающие нагрузку на 230 В."
     fi
-    MQTT_ALREADY=yes
-    return 0
+    ans=$(ask "Оставить его настройки как есть? [Д/н]: " "д")
+    case "$ans" in
+      [нНnN]*)
+        say "Перенастраиваем."
+        MQTT_MODE="" # спросим заново, как настраивать
+        ;;
+      *)
+        MQTT_ALREADY=yes
+        return 0
+        ;;
+    esac
   fi
 
   CONF="/etc/mosquitto/conf.d/mqtt2mimismart.conf"
+
+  # Настройки, дописанные в главный конфиг, наш файл в conf.d не отменяет:
+  # mosquitto читает оба, и последнее значение побеждает. Об этом стоит знать,
+  # если что-то настроено там и продолжает действовать.
 
   # --- с паролями или без ---
   if [ -z "$MQTT_MODE" ]; then
@@ -248,6 +273,14 @@ setup_mosquitto() {
 
   mkdir -p /etc/mosquitto/conf.d
 
+  # Свой listener добавляем, только если его ещё нет: два на одном порту — это
+  # «Address already in use», и брокер не поднимется вовсе.
+  if has_listener; then
+    LISTENER_LINE="# listener не добавляем: он уже задан в другом конфиге"
+  else
+    LISTENER_LINE="listener 1883"
+  fi
+
   if [ "$MQTT_MODE" = "auth" ]; then
     PASSWD_FILE="/etc/mosquitto/passwd"
     # -b задаёт пароль сразу, без интерактивного запроса; -c создаёт файл и
@@ -278,30 +311,22 @@ setup_mosquitto() {
 # listener без адреса означает «слушать на всех интерфейсах» — именно это и
 # нужно, чтобы устройства достучались. С версии 2.0 mosquitto по умолчанию
 # слушает только localhost, и устройства при этом молча не подключаются.
-listener 1883
+$LISTENER_LINE
 
 # Обе строки имеют смысл только вместе: password_file при allow_anonymous true
 # ничего не защищает, и кажется, что защита работает, хотя её нет.
 allow_anonymous false
 password_file /etc/mosquitto/passwd
-
-persistence true
-persistence_location /var/lib/mosquitto/
-log_dest file /var/log/mosquitto/mosquitto.log
 CONFEOF
   else
-    cat > "$CONF" <<'CONFEOF'
+    cat > "$CONF" <<CONFEOF
 # Настройка от install.sh шлюза mqtt2mimismart.
 #
 # Без учётных записей: подключиться может любой, кто в сети. Годится для
 # изолированной сети; если сеть общая с жильцами или гостями, заведите пароли —
 # по этой шине ходят команды, щёлкающие нагрузку на 230 В.
-listener 1883
+$LISTENER_LINE
 allow_anonymous true
-
-persistence true
-persistence_location /var/lib/mosquitto/
-log_dest file /var/log/mosquitto/mosquitto.log
 CONFEOF
   fi
 
