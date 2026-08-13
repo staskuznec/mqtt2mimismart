@@ -26,8 +26,10 @@ RestartSec=5s
 StateDirectory=mqtt2mimismart
 StateDirectoryMode=0700
 
-# Каталоги, куда службе можно писать: всё остальное закрыто ProtectSystem.
-ReadWritePaths=/var/lib/mqtt2mimismart /home/sh2/mqtt/profiles
+# Каталоги, куда службе можно писать: всё остальное закрыто ProtectSystem,
+# и без этой строки не поможет даже владение каталогом. Каталог бинарника
+# нужен обновлению кнопкой в вебе: оно заменяет бинарник на месте.
+ReadWritePaths=/var/lib/mqtt2mimismart /home/sh2/mqtt/profiles /opt/mqtt2mimismart
 
 # Журнал уходит в journald: смотреть через journalctl -u mqtt2mimismart -f
 StandardOutput=journal

@@ -558,6 +558,11 @@ chmod 0700 "$STATE_DIR"
 chown -R mqtt2mimismart "$PROFILES_DIR" 2>/dev/null || true
 chmod 0755 "$PROFILES_DIR"
 
+# Каталог бинарника тоже отдаём службе: обновление кнопкой в вебе пишет туда
+# новый файл. Права на сам бинарник при этом остаются 0755 — заменить его
+# может только владелец каталога, то есть сама служба.
+chown mqtt2mimismart "$BIN_DIR" 2>/dev/null || true
+
 # --- ставим ----------------------------------------------------------------
 UPDATE=no
 [ -f "$BIN_DIR/mqtt2mimismart" ] && UPDATE=yes
@@ -583,6 +588,7 @@ upgrade_unit() {
 
   NEEDS=""
   grep -q -- "--profiles" "$UNIT" || NEEDS="profiles"
+  grep -q "ReadWritePaths=.*$BIN_DIR" "$UNIT" || NEEDS="$NEEDS запись-в-каталог-бинарника"
   if [ "$PROXY" = yes ] && ! grep -q -- "--base-path" "$UNIT"; then
     NEEDS="$NEEDS base-path"
   fi
@@ -592,7 +598,8 @@ upgrade_unit() {
 
   # Через awk, а не sed -i: у последнего разный синтаксис в GNU и BSD, а
   # испорченный юнит означает службу, которая не поднимется.
-  awk -v prof="$PROFILES_DIR" -v base="$BASE_PATH" -v proxy="$PROXY" -v state="$STATE_DIR" '
+  awk -v prof="$PROFILES_DIR" -v base="$BASE_PATH" -v proxy="$PROXY" \
+      -v state="$STATE_DIR" -v bin="$BIN_DIR" '
     /^ExecStart=/ {
       if ($0 !~ /--profiles/) {
         sub(/--log-level/, "--profiles " prof " --log-level")
@@ -605,13 +612,14 @@ upgrade_unit() {
     }
     /^ReadWritePaths=/ {
       if ($0 !~ prof) { $0 = $0 " " prof }
+      if ($0 !~ bin)  { $0 = $0 " " bin }
       print; seen = 1; next
     }
     { print }
     END {
       if (!seen) {
         # Строки не было вовсе: без неё ProtectSystem=strict закроет запись.
-        print "ReadWritePaths=" state " " prof
+        print "ReadWritePaths=" state " " prof " " bin
       }
     }
   ' "$UNIT" > "$UNIT.new" 2>/dev/null
@@ -649,8 +657,10 @@ StandardError=journal
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-# Каталоги, куда службе можно писать: всё остальное закрыто ProtectSystem.
-ReadWritePaths=$STATE_DIR $PROFILES_DIR
+# Каталоги, куда службе можно писать: всё остальное закрыто ProtectSystem,
+# и без этой строки не поможет даже владение каталогом.
+# BIN_DIR нужен обновлению кнопкой в вебе: оно заменяет бинарник на месте.
+ReadWritePaths=$STATE_DIR $PROFILES_DIR $BIN_DIR
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true

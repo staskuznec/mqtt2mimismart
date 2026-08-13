@@ -277,7 +277,14 @@ func (c *Checker) Apply(ctx context.Context) error {
 	dir := filepath.Dir(exe)
 	tmp := filepath.Join(dir, ".mqtt2mimismart.new")
 	if err := os.WriteFile(tmp, binary, 0o755); err != nil {
-		return fmt.Errorf("не удалось записать новый бинарник: %w", err)
+		// Самая частая причина — не права, а ProtectSystem=strict в юните:
+		// он закрывает всю файловую систему, кроме перечисленной в
+		// ReadWritePaths, и владение каталогом тут не помогает.
+		return fmt.Errorf("не удалось записать в %s: %w.\n\n"+
+			"Скорее всего каталог закрыт настройкой службы (ProtectSystem=strict). "+
+			"Запустите установщик — он добавит каталог в ReadWritePaths:\n"+
+			"curl -fsSL https://raw.githubusercontent.com/staskuznec/mqtt2mimismart/main/install.sh | sudo sh",
+			dir, err)
 	}
 
 	// Прежний сохраняем: откат должен быть в одно движение.
