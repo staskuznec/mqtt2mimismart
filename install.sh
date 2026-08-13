@@ -124,6 +124,40 @@ MQTT_USER_GATEWAY="gateway"
 MQTT_DEVICES_PASS=""
 MQTT_GATEWAY_PASS=""
 MQTT_MODE="${MQTT_MODE:-}" # anon | auth
+MQTT_ALREADY=no            # брокер был настроен до нас
+
+# broker_ready сообщает, что брокер уже настроен и работать с ним можно.
+broker_ready() {
+  # Слушает порт — значит настроен и запущен. Самый надёжный признак: он не
+  # зависит от того, где именно лежит конфиг.
+  if command -v ss >/dev/null 2>&1; then
+    ss -tln 2>/dev/null | grep -q "[:.]1883 " && return 0
+  elif command -v netstat >/dev/null 2>&1; then
+    netstat -tln 2>/dev/null | grep -q "[:.]1883 " && return 0
+  fi
+
+  # Не запущен, но настроен: listener есть в главном конфиге или в conf.d.
+  grep -qs '^[[:space:]]*listener' /etc/mosquitto/mosquitto.conf 2>/dev/null && return 0
+  for f in /etc/mosquitto/conf.d/*.conf; do
+    [ -f "$f" ] || continue
+    grep -qs '^[[:space:]]*listener' "$f" && return 0
+  done
+  return 1
+}
+
+# detect_broker_mode определяет, с паролями настроен брокер или без: от этого
+# зависит, что печатать в конце — какие учётные данные вводить в шлюзе.
+detect_broker_mode() {
+  MQTT_MODE="anon"
+  for f in /etc/mosquitto/mosquitto.conf /etc/mosquitto/conf.d/*.conf; do
+    [ -f "$f" ] || continue
+    if grep -qs '^[[:space:]]*password_file' "$f" ||
+       grep -qs '^[[:space:]]*allow_anonymous[[:space:]]\+false' "$f"; then
+      MQTT_MODE="auth"
+      return 0
+    fi
+  done
+}
 
 install_mosquitto() {
   if command -v apt-get >/dev/null 2>&1; then
@@ -165,15 +199,23 @@ setup_mosquitto() {
 
   # Уже настроенный брокер не трогаем: перезаписать чужой конфиг — верный
   # способ уронить работающий объект.
+  #
+  # Смотрим по факту, а не по одному каталогу: настройка может лежать и в
+  # главном mosquitto.conf, и в conf.d, а самый надёжный признак — брокер уже
+  # слушает свой порт.
+  if broker_ready; then
+    detect_broker_mode
+    if [ "$MQTT_MODE" = "auth" ]; then
+      say "Брокер уже настроен, с учётными записями — не трогаем."
+      say "При настройке шлюза укажите пользователя и пароль, заведённые ранее."
+    else
+      say "Брокер уже настроен, без учётных записей — не трогаем."
+    fi
+    MQTT_ALREADY=yes
+    return 0
+  fi
+
   CONF="/etc/mosquitto/conf.d/mqtt2mimismart.conf"
-  if [ -f "$CONF" ]; then
-    say "Настройка брокера уже есть ($CONF), не трогаем."
-    return 0
-  fi
-  if ls /etc/mosquitto/conf.d/*.conf >/dev/null 2>&1; then
-    say "В /etc/mosquitto/conf.d уже есть свои настройки — брокер не трогаем."
-    return 0
-  fi
 
   # --- с паролями или без ---
   if [ -z "$MQTT_MODE" ]; then
@@ -557,7 +599,14 @@ if systemctl is-active --quiet "$SERVICE"; then
     fi
     say ""
     say "Что вводить в разделе «Настройки»:"
-    if [ "$MQTT_MODE" = "auth" ] && [ -n "$MQTT_GATEWAY_PASS" ]; then
+    if [ "$MQTT_ALREADY" = yes ]; then
+      say "  Брокер:      127.0.0.1:1883"
+      if [ "$MQTT_MODE" = "auth" ]; then
+        say "  Пользователь и пароль — те, что заведены на брокере раньше."
+      else
+        say "  Пользователь и пароль оставьте пустыми — брокер без учётных записей."
+      fi
+    elif [ "$MQTT_MODE" = "auth" ] && [ -n "$MQTT_GATEWAY_PASS" ]; then
       say "  Брокер:      127.0.0.1:1883"
       say "  Пользователь: $MQTT_USER_GATEWAY"
       say "  Пароль:       тот, что вы задали для шлюза"
