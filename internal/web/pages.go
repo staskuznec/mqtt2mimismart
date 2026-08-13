@@ -12,6 +12,7 @@ import (
 	"github.com/staskuznec/mqtt2mimismart/internal/mqtt"
 	"github.com/staskuznec/mqtt2mimismart/internal/shs"
 	"github.com/staskuznec/mqtt2mimismart/internal/store"
+	"github.com/staskuznec/mqtt2mimismart/internal/update"
 )
 
 // Страницы вшиты в бинарник: на сервер кладётся один файл, и забыть скопировать
@@ -70,6 +71,7 @@ type overviewData struct {
 	SHSPhase   string
 	SHSDot     string
 	Links      linksSummary
+	Update     *update.Info
 }
 
 type linksSummary struct {
@@ -115,6 +117,11 @@ func (s *server) pageOverview(w http.ResponseWriter, r *http.Request) {
 			data.Links.Echoes += st.Echoes
 			data.Links.Errors += st.Errors
 		}
+	}
+
+	if s.status.Update != nil {
+		info := s.status.Update()
+		data.Update = &info
 	}
 
 	s.render(w, "overview", data)

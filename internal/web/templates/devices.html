@@ -19,7 +19,8 @@
       <td class="hint">{{.Model}}</td>
       <td class="hint">{{.Template}}</td>
       <td class="num">{{.Enabled}} из {{.Links}}</td>
-      <td>
+      <td style="white-space:nowrap">
+        <a href="/devices/{{.ID}}/edit">настроить</a>
         <form method="post" action="/devices/{{.ID}}/delete" style="display:inline"
               onsubmit="return confirm('Удалить устройство вместе с его связками?')">
           <button type="submit" class="link danger">удалить</button>

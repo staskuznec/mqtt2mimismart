@@ -16,6 +16,7 @@ import (
 	"github.com/staskuznec/mqtt2mimismart/internal/mqtt"
 	"github.com/staskuznec/mqtt2mimismart/internal/shs"
 	"github.com/staskuznec/mqtt2mimismart/internal/store"
+	"github.com/staskuznec/mqtt2mimismart/internal/update"
 )
 
 // healthTimeout — сколько ждём базу при проверке состояния. Проверка обязана
@@ -30,6 +31,9 @@ type Status struct {
 	Topics   func() []mqtt.TopicInfo
 	Links    func() map[int64]link.Stats
 	Elements func() []logic.Element
+
+	// Update — что известно про доступную версию.
+	Update func() update.Info
 
 	// Reload заставляет движок перечитать связки. Вызывается после каждой
 	// правки: иначе изменение вступало бы в силу только после перезапуска.
@@ -58,6 +62,7 @@ func Handler(log *slog.Logger, db *store.Store, version string, status Status) h
 
 	mux.HandleFunc("GET /devices", s.pageDevices)
 	mux.HandleFunc("GET /devices/new", s.pageDeviceForm)
+	mux.HandleFunc("GET /devices/{id}/edit", s.pageDeviceForm)
 	mux.HandleFunc("POST /devices/apply", s.applyTemplate)
 	mux.HandleFunc("POST /devices/{id}/delete", s.deleteDevice)
 

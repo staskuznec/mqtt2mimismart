@@ -20,6 +20,7 @@ import (
 	"github.com/staskuznec/mqtt2mimismart/internal/mqtt"
 	"github.com/staskuznec/mqtt2mimismart/internal/shs"
 	"github.com/staskuznec/mqtt2mimismart/internal/store"
+	"github.com/staskuznec/mqtt2mimismart/internal/update"
 	"github.com/staskuznec/mqtt2mimismart/internal/web"
 )
 
@@ -37,6 +38,7 @@ type App struct {
 	mqtt   *mqtt.Client
 	shs    *shs.Client
 	engine *link.Engine
+	update *update.Checker
 
 	// Разобранный logic.xml. Приезжает в рукопожатии и меняется редко, а
 	// разбирать три сотни элементов на каждой отрисовке страницы незачем.
@@ -80,7 +82,7 @@ func (a *App) Elements() []logic.Element {
 // New собирает демон. Клиенты создаются только при заполненных настройках:
 // подключаться, не зная куда, всё равно некуда.
 func New(log *slog.Logger, db *store.Store, version, addr string) (*App, error) {
-	a := &App{log: log, db: db, version: version, addr: addr}
+	a := &App{log: log, db: db, version: version, addr: addr, update: update.New(version)}
 
 	cfg, err := db.Config(context.Background())
 	if err != nil {
@@ -191,6 +193,14 @@ func (a *App) Run(ctx context.Context) error {
 		}
 	}
 
+	// Проверка обновлений живёт отдельно от всего остального: интернета на
+	// объекте может не быть вовсе, и её неудача ничего не роняет.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		a.update.Run(ctx)
+	}()
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -293,6 +303,7 @@ func (a *App) serve(ctx context.Context) error {
 	}
 	status.Elements = a.Elements
 	status.Reload = a.ReloadLinks
+	status.Update = a.update.Info
 
 	srv := &http.Server{
 		Addr:    a.addr,

@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -57,6 +58,10 @@ type deviceFormData struct {
 	Selected  devtmpl.Template
 	HasChoice bool // шаблон выбран, показываем роли
 
+	// DeviceID не ноль — правим уже заведённое устройство: тот же визард,
+	// только назначения ролей подставлены из того, что развёрнуто.
+	DeviceID int64
+
 	Name     string
 	Prefix   string
 	Prefixes []prefixOption // что видно на шине
@@ -71,7 +76,8 @@ type deviceFormData struct {
 type roleOption struct {
 	devtmpl.Role
 	Elements []elementOption
-	Narrowed bool // список сужен по типу, есть что показать целиком
+	Narrowed bool   // список сужен по типу, есть что показать целиком
+	Selected string // назначенный элемент при правке устройства
 }
 
 // prefixOption — предполагаемый префикс устройства, собранный из снифера.
@@ -92,6 +98,46 @@ func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 
 	data.Prefix = r.URL.Query().Get("prefix")
 	data.Prefixes = s.prefixOptions(r)
+	data.Elements = s.elementOptions("")
+
+	// Правка заведённого устройства: тот же визард с подставленными
+	// назначениями. Пересоздавать устройство ради переназначенной роли —
+	// значит терять имя, историю и связки, заведённые к нему руками.
+	if id := r.PathValue("id"); id != "" {
+		n, err := strconv.ParseInt(id, 10, 64)
+		if err != nil {
+			http.Error(w, "неверный идентификатор устройства", http.StatusBadRequest)
+			return
+		}
+		d, err := s.db.Device(r.Context(), n)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
+		data.Title = "Настройка устройства"
+		data.DeviceID, data.Name, data.Prefix = d.ID, d.Name, d.TopicPrefix
+
+		key := d.Template
+		if q := r.URL.Query().Get("template"); q != "" {
+			key = q // шаблон переключили прямо в форме
+		}
+		t, err := s.db.Template(r.Context(), key)
+		if err != nil {
+			data.Error = err.Error()
+			s.render(w, "device_form", data)
+			return
+		}
+		data.Selected, data.HasChoice = t, true
+
+		assign, err := s.db.Assignment(r.Context(), d.ID, t)
+		if err != nil {
+			data.Error = err.Error()
+		}
+		data.Roles = s.roleOptions(t, data.Elements, assign)
+		s.render(w, "device_form", data)
+		return
+	}
 
 	if key := r.URL.Query().Get("template"); key != "" {
 		t, err := s.db.Template(r.Context(), key)
@@ -102,8 +148,7 @@ func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 			data.Name = t.Name
 		}
 	}
-	data.Elements = s.elementOptions("")
-	data.Roles = s.roleOptions(data.Selected, data.Elements)
+	data.Roles = s.roleOptions(data.Selected, data.Elements, nil)
 
 	s.render(w, "device_form", data)
 }
@@ -113,10 +158,15 @@ func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 // Роль знает, какие типы ей годятся: под канал реле нужна лампа, под
 // температуру — датчик. Показывать при этом все три сотни элементов дома
 // значит заставлять искать глазами и ошибаться.
-func (s *server) roleOptions(t devtmpl.Template, all []elementOption) []roleOption {
+func (s *server) roleOptions(t devtmpl.Template, all []elementOption,
+	assign map[string]devtmpl.Addr) []roleOption {
+
 	out := make([]roleOption, 0, len(t.Roles))
 	for _, role := range t.Roles {
 		opt := roleOption{Role: role}
+		if addr, ok := assign[role.Key]; ok {
+			opt.Selected = fmt.Sprintf("%d:%d", addr.ID, addr.SubID)
+		}
 		for _, e := range all {
 			if role.Accepts(e.Type) {
 				opt.Elements = append(opt.Elements, e)
@@ -184,24 +234,32 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 	prefix := trim(r.PostFormValue("prefix"))
 	name := trim(r.PostFormValue("name"))
 
-	fail := func(msg string) {
+	var deviceID int64
+	if id := trim(r.PostFormValue("device_id")); id != "" {
+		deviceID, _ = strconv.ParseInt(id, 10, 64)
+	}
+
+	fail := func(msg string, assign map[string]devtmpl.Addr) {
 		data := deviceFormData{
 			Title: "Новое устройство", Nav: "devices",
-			Error: msg, Name: name, Prefix: prefix,
+			Error: msg, Name: name, Prefix: prefix, DeviceID: deviceID,
 			Prefixes: s.prefixOptions(r),
 			Elements: s.elementOptions(""),
+		}
+		if deviceID != 0 {
+			data.Title = "Настройка устройства"
 		}
 		data.Templates, _ = s.db.Templates(r.Context())
 		if t, err := s.db.Template(r.Context(), key); err == nil {
 			data.Selected, data.HasChoice = t, true
-			data.Roles = s.roleOptions(t, data.Elements)
+			data.Roles = s.roleOptions(t, data.Elements, assign)
 		}
 		s.render(w, "device_form", data)
 	}
 
 	tmpl, err := s.db.Template(r.Context(), key)
 	if err != nil {
-		fail(err.Error())
+		fail(err.Error(), nil)
 		return
 	}
 
@@ -215,16 +273,20 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 		}
 		id, subID, err := parseAddr(addr)
 		if err != nil {
-			fail("роль «" + role.Title + "»: " + err.Error())
+			fail("роль «"+role.Title+"»: "+err.Error(), assign)
 			return
 		}
 		assign[role.Key] = devtmpl.Addr{ID: id, SubID: subID}
 	}
 
-	_, err = s.db.ApplyTemplate(r.Context(),
-		store.Device{Name: name, TopicPrefix: prefix}, tmpl, assign)
+	device := store.Device{ID: deviceID, Name: name, TopicPrefix: prefix}
+	if deviceID != 0 {
+		err = s.db.ReapplyTemplate(r.Context(), device, tmpl, assign)
+	} else {
+		_, err = s.db.ApplyTemplate(r.Context(), device, tmpl, assign)
+	}
 	if err != nil {
-		fail(err.Error())
+		fail(err.Error(), assign)
 		return
 	}
 

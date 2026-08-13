@@ -2,6 +2,14 @@
 <h1>Обзор</h1>
 <p class="hint">Версия {{.Version}}, схема базы {{.Schema}}, {{.DBPath}}</p>
 
+{{with .Update}}{{if .Available}}
+  <div class="msg ok">
+    Вышла версия <b>{{.Latest}}</b>, установлена {{.Current}}.
+    Обновление: <code>curl -fsSL https://raw.githubusercontent.com/staskuznec/mqtt2mimismart/main/install.sh | sudo sh</code>
+    {{with .URL}} · <a href="{{.}}">что изменилось</a>{{end}}
+  </div>
+{{end}}{{end}}
+
 {{if not .Configured}}
   <div class="msg bad">
     Настройки не заполнены. Откройте <a href="/settings">Настройки</a> и укажите

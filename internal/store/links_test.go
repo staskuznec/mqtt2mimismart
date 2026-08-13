@@ -560,3 +560,114 @@ func TestSavePairIsIdempotent(t *testing.T) {
 		t.Errorf("после правки связок %d, ожидалось 2 — правка создала дубль", len(links))
 	}
 }
+
+// Правка устройства: назначения восстанавливаются, связки разворачиваются
+// заново, а чужое не трогается.
+func TestReapplyTemplate(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	tmpl, _ := s.Template(ctx, "shelly25-relay")
+	deviceID, err := s.ApplyTemplate(ctx,
+		Device{Name: "Реле", TopicPrefix: "shellies/sw25-A1"}, tmpl,
+		map[string]devtmpl.Addr{"ch0": {ID: 758, SubID: 4}, "power0": {ID: 563, SubID: 120}})
+	if err != nil {
+		t.Fatalf("ApplyTemplate: %v", err)
+	}
+
+	// Назначения должны восстанавливаться из развёрнутых связок.
+	assign, err := s.Assignment(ctx, deviceID, tmpl)
+	if err != nil {
+		t.Fatalf("Assignment: %v", err)
+	}
+	if assign["ch0"] != (devtmpl.Addr{ID: 758, SubID: 4}) || assign["power0"] != (devtmpl.Addr{ID: 563, SubID: 120}) {
+		t.Errorf("восстановлено %+v", assign)
+	}
+	if _, ok := assign["temp"]; ok {
+		t.Error("роль без связки попала в назначения")
+	}
+
+	// Человек выключил одну связку и завёл свою.
+	links, _ := s.LinksByDevice(ctx, deviceID)
+	for _, l := range links {
+		if l.Name == "Канал 0 — мощность" {
+			if err := s.SetLinkEnabled(ctx, l.ID, false); err != nil {
+				t.Fatalf("SetLinkEnabled: %v", err)
+			}
+		}
+	}
+	own := sampleIn()
+	own.Name, own.DeviceID, own.Topic = "Своя связка", deviceID, "своя/связка"
+	if _, err := s.CreateLink(ctx, own); err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	// Переназначаем канал и добавляем температуру.
+	err = s.ReapplyTemplate(ctx,
+		Device{ID: deviceID, Name: "Реле прихожей", TopicPrefix: "shellies/sw25-A1"}, tmpl,
+		map[string]devtmpl.Addr{
+			"ch0": {ID: 758, SubID: 5}, "power0": {ID: 563, SubID: 120}, "temp": {ID: 542, SubID: 16},
+		})
+	if err != nil {
+		t.Fatalf("ReapplyTemplate: %v", err)
+	}
+
+	after, _ := s.LinksByDevice(ctx, deviceID)
+	var own2, power, temp *link.Link
+	for i := range after {
+		switch after[i].Name {
+		case "Своя связка":
+			own2 = &after[i]
+		case "Канал 0 — мощность":
+			power = &after[i]
+		case "Температура устройства":
+			temp = &after[i]
+		}
+	}
+	if own2 == nil {
+		t.Error("связка, заведённая вручную, снесена перенастройкой")
+	}
+	if temp == nil {
+		t.Error("добавленная роль не развернулась")
+	}
+	// Выключенное человеком не должно включаться обратно правкой назначений.
+	if power == nil || power.Enabled {
+		t.Error("выключенная связка включилась сама")
+	}
+	for _, l := range after {
+		if l.Name == "Канал 0 — состояние" && l.TargetSubID != 5 {
+			t.Errorf("канал не переехал: %s", l.Addr())
+		}
+	}
+
+	// Устройство остаётся тем же, а не заводится заново.
+	devices, _ := s.Devices(ctx)
+	if len(devices) != 1 || devices[0].Name != "Реле прихожей" {
+		t.Errorf("устройства: %+v", devices)
+	}
+}
+
+// Неверное назначение не должно оставлять устройство без связок.
+func TestReapplyValidatesBeforeDeleting(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	tmpl, _ := s.Template(ctx, "shelly25-relay")
+	deviceID, _ := s.ApplyTemplate(ctx,
+		Device{Name: "Реле", TopicPrefix: "shellies/sw25-A1"}, tmpl,
+		map[string]devtmpl.Addr{"ch0": {ID: 758, SubID: 4}})
+
+	before, _ := s.LinksByDevice(ctx, deviceID)
+	// Обязательная роль без элемента — шаблон не применится.
+	err := s.ReapplyTemplate(ctx,
+		Device{ID: deviceID, Name: "Реле", TopicPrefix: "shellies/sw25-A1"}, tmpl,
+		map[string]devtmpl.Addr{"temp": {ID: 542, SubID: 16}})
+	if err == nil {
+		t.Fatal("перенастройка без обязательной роли прошла")
+	}
+
+	after, _ := s.LinksByDevice(ctx, deviceID)
+	if len(after) != len(before) {
+		t.Errorf("связок было %d, стало %d — неудачная правка их снесла", len(before), len(after))
+	}
+}

@@ -1,8 +1,12 @@
 {{define "content"}}
-<h1>Новое устройство</h1>
+<h1>{{if .DeviceID}}Настройка устройства{{else}}Новое устройство{{end}}</h1>
+{{if .DeviceID}}<p class="hint">
+  Связки шаблона будут развёрнуты заново по этим назначениям. Заведённые
+  вручную не тронутся, а выключенные останутся выключенными.
+</p>{{end}}
 {{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
 
-<form method="get" action="/devices/new">
+<form method="get" action="{{if .DeviceID}}/devices/{{.DeviceID}}/edit{{else}}/devices/new{{end}}">
   <label>Шаблон
     <select name="template" onchange="this.form.submit()">
       <option value="">— выберите модель —</option>
@@ -19,6 +23,7 @@
 
   <form method="post" action="/devices/apply" class="stack">
     <input type="hidden" name="template" value="{{.Selected.Key}}">
+    <input type="hidden" name="device_id" value="{{.DeviceID}}">
 
     <label>Название <span>— как называть устройство в списке</span>
       <input type="text" name="name" value="{{.Name}}"></label>
@@ -51,7 +56,8 @@
           из {{len $.Elements}}){{end}}</span>
         <select name="role_{{.Key}}" {{if .Required}}required{{end}}>
           <option value="">— не нужно —</option>
-          {{range .Elements}}<option value="{{.Addr}}">{{.Label}} · {{.Addr}}</option>{{end}}
+          {{$sel := .Selected}}
+          {{range .Elements}}<option value="{{.Addr}}" {{if eq .Addr $sel}}selected{{end}}>{{.Label}} · {{.Addr}}</option>{{end}}
         </select></label>
     {{end}}
 
@@ -60,7 +66,7 @@
          умному дому. Проверьте связь на странице <a href="/">Обзор</a>.</p>
     {{end}}
 
-    </fieldset><button type="submit">Развернуть</button>
+    </fieldset><button type="submit">{{if .DeviceID}}Сохранить{{else}}Развернуть{{end}}</button>
   </form>
 {{end}}
 {{end}}
