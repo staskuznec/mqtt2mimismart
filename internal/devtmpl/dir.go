@@ -53,7 +53,7 @@ func (d *Dir) seed() error {
 		if _, err := os.Stat(path); err == nil {
 			continue // файл уже есть, не трогаем
 		}
-		body, err := templateFS.ReadFile("templates/" + t.Key + ext)
+		body, err := templateFS.ReadFile(t.Key + ext)
 		if err != nil {
 			return fmt.Errorf("devtmpl: чтение встроенного %s: %w", t.Key, err)
 		}
@@ -86,7 +86,7 @@ func (d *Dir) List() ([]Item, error) {
 	bundled := make(map[string][]byte)
 	if all, err := Builtin(); err == nil {
 		for _, t := range all {
-			if body, err := templateFS.ReadFile("templates/" + t.Key + ext); err == nil {
+			if body, err := templateFS.ReadFile(t.Key + ext); err == nil {
 				bundled[t.Key] = body
 			}
 		}

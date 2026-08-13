@@ -11,7 +11,6 @@
 package devtmpl
 
 import (
-	"embed"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -19,12 +18,13 @@ import (
 	"strings"
 
 	"github.com/staskuznec/mqtt2mimismart/internal/link"
+	"github.com/staskuznec/mqtt2mimismart/profiles"
 )
 
-// Встроенные шаблоны едут в бинарнике. Пользовательские будут лежать в базе.
-//
-//go:embed templates/*.json
-var templateFS embed.FS
+// templateFS — профили, которые едут вместе со шлюзом. Сами файлы лежат в
+// каталоге profiles в корне проекта: это данные, и прятать их в глубине
+// internal незачем.
+var templateFS = profiles.FS
 
 // Placeholder — подстановка префикса топиков устройства.
 const Placeholder = "{{prefix}}"
@@ -101,7 +101,7 @@ type LinkSpec struct {
 
 // Builtin возвращает встроенные шаблоны.
 func Builtin() ([]Template, error) {
-	entries, err := fs.ReadDir(templateFS, "templates")
+	entries, err := fs.ReadDir(templateFS, ".")
 	if err != nil {
 		return nil, fmt.Errorf("devtmpl: чтение шаблонов: %w", err)
 	}
@@ -111,7 +111,7 @@ func Builtin() ([]Template, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		body, err := templateFS.ReadFile("templates/" + e.Name())
+		body, err := templateFS.ReadFile(e.Name())
 		if err != nil {
 			return nil, fmt.Errorf("devtmpl: чтение %s: %w", e.Name(), err)
 		}
