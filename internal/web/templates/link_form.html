@@ -7,7 +7,7 @@
 
 {{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
 
-<form method="post" action="/links/save" class="stack">
+<form method="post" action="links/save" class="stack">
   <input type="hidden" name="id" value="{{.Link.ID}}">
   <input type="hidden" name="pair_id" value="{{.Link.PairID}}">
 
@@ -46,7 +46,7 @@
     </select></label>
   {{if not .Elements}}
     <p class="hint">Список пуст: logic.xml приезжает при подключении к умному дому.
-       Проверьте связь на странице <a href="/">Обзор</a>.</p>
+       Проверьте связь на странице <a href=".">Обзор</a>.</p>
   {{end}}
 
   <div id="side-in">
@@ -133,7 +133,7 @@
 // Проба уходит на сервер той же формой: значение считает Go, а не браузер.
 async function preview(form) {
   const data = new FormData(form);
-  const res = await fetch('/links/preview', {method: 'POST', body: new URLSearchParams(data)});
+  const res = await fetch('links/preview', {method: 'POST', body: new URLSearchParams(data)});
   document.getElementById('preview').innerHTML = await res.text();
 }
 // Подсказка формы по типу элемента: у ламп и штор один байт, и перепутать

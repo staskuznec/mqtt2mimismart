@@ -21,7 +21,7 @@
 {{if .HasChoice}}
   {{with .Selected.Note}}<p class="hint" style="max-width:640px">{{.}}</p>{{end}}
 
-  <form method="post" action="/devices/apply" class="stack">
+  <form method="post" action="devices/apply" class="stack">
     <input type="hidden" name="template" value="{{.Selected.Key}}">
     <input type="hidden" name="device_id" value="{{.DeviceID}}">
 
@@ -63,7 +63,7 @@
 
     {{if not .Elements}}
       <p class="msg bad">Список элементов пуст: logic.xml приезжает при подключении к
-         умному дому. Проверьте связь на странице <a href="/">Обзор</a>.</p>
+         умному дому. Проверьте связь на странице <a href=".">Обзор</a>.</p>
     {{end}}
 
     </fieldset><button type="submit">{{if .DeviceID}}Сохранить{{else}}Развернуть{{end}}</button>

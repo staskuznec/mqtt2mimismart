@@ -10,7 +10,7 @@
 {{end}}
 {{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
 
-<form method="post" action="/settings" class="stack"><div>
+<form method="post" action="settings" class="stack"><div>
   </div><fieldset><legend>MQTT-брокер</legend>
   <label>Адрес <span>— host:port, например 127.0.0.1:1883</span>
     <input type="text" name="mqtt_addr" value="{{.Config.MQTTAddr}}" required></label>
@@ -32,7 +32,7 @@
     Описание дома (logic.xml) настраивать не нужно: оно приходит от сервера при
     подключении, поэтому список элементов всегда соответствует тому серверу, с
     которым шлюз работает на самом деле. Смотреть его — в разделе
-    <a href="/elements">Элементы</a>.
+    <a href="elements">Элементы</a>.
   </p>
 
   </fieldset><button type="submit">Сохранить</button>

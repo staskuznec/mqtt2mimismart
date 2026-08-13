@@ -21,32 +21,42 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
-// pages — разобранные шаблоны. Каждая страница собирается вместе с общим
-// оформлением: html/template не умеет переопределять блок в рамках одного
-// набора, поэтому наборов столько же, сколько страниц.
-var pages = map[string]*template.Template{
-	"overview":    mustParse("overview.html"),
-	"settings":    mustParse("settings.html"),
-	"topics":      mustParse("topics.html"),
-	"links":       mustParse("links.html"),
-	"link_form":   mustParse("link_form.html"),
-	"elements":    mustParse("elements.html"),
-	"devices":     mustParse("devices.html"),
-	"device_form": mustParse("device_form.html"),
-	"templates":   mustParse("templates.html"),
+// buildPages разбирает шаблоны, зная базовый путь.
+//
+// Путь нужен шаблонам, а не только маршрутам: шлюз может стоять за
+// веб-сервером в подкаталоге (http://сервер/mqtt/), и тогда ссылки от корня
+// уводили бы на чужие страницы. Все ссылки в шаблонах относительные, а
+// разрешает их браузер по тегу base — его и подставляет функция.
+func buildPages(base string) map[string]*template.Template {
+	funcs := template.FuncMap{
+		"base": func() string { return base },
+	}
+	parse := func(name string) *template.Template {
+		return template.Must(template.New("layout.html").Funcs(funcs).
+			ParseFS(templateFS, "templates/layout.html", "templates/"+name))
+	}
 
-	// Проба возвращается кусочком страницы, поэтому общее оформление ей
-	// не нужно — она подставляется в уже открытую форму.
-	"preview": template.Must(template.ParseFS(templateFS, "templates/preview.html")),
-}
+	return map[string]*template.Template{
+		"overview":    parse("overview.html"),
+		"settings":    parse("settings.html"),
+		"topics":      parse("topics.html"),
+		"links":       parse("links.html"),
+		"link_form":   parse("link_form.html"),
+		"elements":    parse("elements.html"),
+		"devices":     parse("devices.html"),
+		"device_form": parse("device_form.html"),
+		"templates":   parse("templates.html"),
 
-func mustParse(name string) *template.Template {
-	return template.Must(template.ParseFS(templateFS, "templates/layout.html", "templates/"+name))
+		// Проба возвращается кусочком страницы, поэтому общее оформление ей
+		// не нужно — она подставляется в уже открытую форму.
+		"preview": template.Must(template.New("preview.html").Funcs(funcs).
+			ParseFS(templateFS, "templates/preview.html")),
+	}
 }
 
 // render отдаёт страницу.
 func (s *server) render(w http.ResponseWriter, page string, data any) {
-	tmpl, ok := pages[page]
+	tmpl, ok := s.pages[page]
 	if !ok {
 		http.Error(w, "нет такой страницы", http.StatusNotFound)
 		return
@@ -190,7 +200,7 @@ func (s *server) saveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.log.Info("настройки сохранены", "mqtt", cfg.MQTTAddr, "shs", cfg.SHSAddr)
-	http.Redirect(w, r, "/settings?saved=1", http.StatusSeeOther)
+	s.redirect(w, r, "/settings?saved=1")
 }
 
 // ---------------------------------------------------------------- Топики

@@ -1,7 +1,7 @@
 {{define "content"}}
 <h1>Устройства</h1>
 <p class="hint">Шаблон разворачивает связки устройства одним действием. Всего {{len .Devices}}.</p>
-<div class="toolbar"><a href="/devices/new" class="btn">Добавить устройство</a></div>
+<div class="toolbar"><a href="devices/new" class="btn">Добавить устройство</a></div>
 
 {{if .Devices}}
 <div class="tablewrap">
@@ -20,8 +20,8 @@
       <td class="hint">{{.Template}}</td>
       <td class="num">{{.Enabled}} из {{.Links}}</td>
       <td style="white-space:nowrap">
-        <a href="/devices/{{.ID}}/edit">настроить</a>
-        <form method="post" action="/devices/{{.ID}}/delete" style="display:inline"
+        <a href="devices/{{.ID}}/edit">настроить</a>
+        <form method="post" action="devices/{{.ID}}/delete" style="display:inline"
               onsubmit="return confirm('Удалить устройство вместе с его связками?')">
           <button type="submit" class="link danger">удалить</button>
         </form>

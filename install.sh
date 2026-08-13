@@ -14,7 +14,12 @@ REPO="staskuznec/mqtt2mimismart"
 BIN_DIR="${BIN_DIR:-/opt/mqtt2mimismart}"
 STATE_DIR="${STATE_DIR:-/var/lib/mqtt2mimismart}"
 SERVICE="mqtt2mimismart"
-ADDR="${ADDR:-0.0.0.0:8080}"
+ADDR="${ADDR:-}"
+
+# Панель умного дома и подкаталог, в котором рядом с ней встанет шлюз.
+# WEB_ROOT — где лежит панель; уточняется под конкретный сервер.
+WEB_ROOT="${WEB_ROOT:-/home/sh2/web}"
+BASE_PATH="${BASE_PATH:-/mqtt}"
 
 say()  { printf '%s\n' "$*"; }
 die()  { printf 'ошибка: %s\n' "$*" >&2; exit 1; }
@@ -262,6 +267,118 @@ CONFEOF
 # команда обрывала бы весь скрипт на середине.
 setup_mosquitto || say "Предупреждение: настроить брокер не удалось, ставим шлюз без него."
 
+# --- веб-сервер: шлюз рядом с панелью умного дома --------------------------
+#
+# На сервере статистики уже стоит веб-сервер с панелью MimiSetup. Логично
+# открывать шлюз оттуда же — http://сервер/mqtt/, — а не отдельным портом:
+# один адрес, одна точка входа, и порт 8080 не надо помнить и открывать.
+PROXY=no
+
+setup_proxy() {
+  if [ "${SKIP_PROXY:-}" = "1" ]; then
+    return 0
+  fi
+
+  WEBSRV=""
+  if command -v apache2ctl >/dev/null 2>&1 || command -v apachectl >/dev/null 2>&1; then
+    WEBSRV="apache"
+  elif command -v nginx >/dev/null 2>&1; then
+    WEBSRV="nginx"
+  else
+    say "Веб-сервер не найден — шлюз будет доступен отдельным портом."
+    return 0
+  fi
+
+  say ""
+  say "Найден веб-сервер: $WEBSRV."
+  say "Шлюз можно открыть рядом с панелью умного дома, по адресу"
+  say "http://сервер$BASE_PATH/ — вместо отдельного порта 8080."
+  ans=$(ask "Настроить? [Д/н]: " "д")
+  case "$ans" in
+    [нНnN]*) return 0 ;;
+  esac
+
+  if [ "$WEBSRV" = "apache" ]; then
+    # conf-available — штатный механизм apache: конфиг применяется ко всем
+    # виртуальным хостам, и чужие файлы при этом не правятся.
+    a2enmod proxy proxy_http >/dev/null 2>&1 || true
+    cat > /etc/apache2/conf-available/mqtt2mimismart.conf <<PROXYEOF
+# Шлюз mqtt2mimismart рядом с панелью умного дома.
+# Поставлено install.sh; удалить: a2disconf mqtt2mimismart
+<Location $BASE_PATH/>
+    ProxyPass        http://127.0.0.1:8080$BASE_PATH/
+    ProxyPassReverse http://127.0.0.1:8080$BASE_PATH/
+</Location>
+PROXYEOF
+    a2enconf mqtt2mimismart >/dev/null 2>&1 || true
+    if apache2ctl configtest >/dev/null 2>&1 || apachectl configtest >/dev/null 2>&1; then
+      systemctl reload apache2 2>/dev/null || service apache2 reload 2>/dev/null || true
+      PROXY=yes
+      say "Apache настроен."
+    else
+      say "Предупреждение: apache не принял конфиг, оставляем отдельный порт."
+      a2disconf mqtt2mimismart >/dev/null 2>&1 || true
+    fi
+    return 0
+  fi
+
+  # nginx: вставлять location в чужой server-блок автоматически нельзя —
+  # так проще всего уронить работающую панель. Кладём готовый кусок и
+  # объясняем, куда его подключить.
+  mkdir -p /etc/nginx/snippets
+  cat > /etc/nginx/snippets/mqtt2mimismart.conf <<PROXYEOF
+# Шлюз mqtt2mimismart рядом с панелью умного дома.
+location $BASE_PATH/ {
+    proxy_pass http://127.0.0.1:8080$BASE_PATH/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+}
+PROXYEOF
+  say ""
+  say "Для nginx готов кусок конфига: /etc/nginx/snippets/mqtt2mimismart.conf"
+  say "Добавьте в нужный server-блок строку:"
+  say "    include snippets/mqtt2mimismart.conf;"
+  say "и выполните: nginx -t && systemctl reload nginx"
+  say "Автоматически не вставляем — так проще всего уронить работающую панель."
+  say ""
+  ans=$(ask "Шлюз уже подключён к nginx этим сниппетом? [д/Н]: " "н")
+  case "$ans" in
+    [дДyY]*) PROXY=yes ;;
+  esac
+}
+
+# add_web_link кладёт в корень панели страничку-переход.
+#
+# Пункт в само меню панели не добавить: она собрана в один минифицированный
+# файл, и правка пережила бы ровно до её обновления. Зато отдельная страница
+# рядом с ней открывается по понятному адресу и ничего не ломает.
+add_web_link() {
+  [ -d "$WEB_ROOT" ] || return 0
+  [ "$PROXY" = yes ] || return 0
+
+  cat > "$WEB_ROOT/mqtt.html" <<LINKEOF
+<!doctype html>
+<meta charset="utf-8">
+<title>Шлюз MQTT</title>
+<meta http-equiv="refresh" content="0; url=$BASE_PATH/">
+<p>Переход к шлюзу MQTT: <a href="$BASE_PATH/">$BASE_PATH/</a></p>
+LINKEOF
+  say "Ссылка на шлюз: http://сервер/mqtt.html (или сразу $BASE_PATH/)"
+}
+
+setup_proxy || say "Предупреждение: настроить веб-сервер не удалось."
+add_web_link || true
+
+# За прокси шлюзу незачем слушать наружу: снаружи к нему ходят через панель.
+if [ -z "$ADDR" ]; then
+  if [ "$PROXY" = yes ]; then
+    ADDR="127.0.0.1:8080"
+  else
+    ADDR="0.0.0.0:8080"
+    BASE_PATH=""
+  fi
+fi
+
 # --- пользователь и каталоги ----------------------------------------------
 if ! id mqtt2mimismart >/dev/null 2>&1; then
   useradd --system --no-create-home --shell /usr/sbin/nologin mqtt2mimismart 2>/dev/null \
@@ -301,7 +418,7 @@ Wants=network-online.target
 Type=simple
 User=mqtt2mimismart
 Group=mqtt2mimismart
-ExecStart=$BIN_DIR/mqtt2mimismart --addr $ADDR --db $STATE_DIR/gateway.db --log-level info
+ExecStart=$BIN_DIR/mqtt2mimismart --addr $ADDR --db $STATE_DIR/gateway.db${BASE_PATH:+ --base-path $BASE_PATH} --log-level info
 Restart=always
 RestartSec=5s
 
@@ -325,6 +442,13 @@ UNIT
   systemctl daemon-reload
   systemctl enable "$SERVICE"
 else
+  # Юнит уже есть — не переписываем: в нём могли поправить пути или флаги.
+  if [ "$PROXY" = yes ] && ! grep -q -- "--base-path" "/etc/systemd/system/$SERVICE.service" 2>/dev/null; then
+    say ""
+    say "Служба заведена раньше и запускается без --base-path $BASE_PATH."
+    say "Чтобы шлюз заработал за прокси, добавьте флаг в ExecStart:"
+    say "    systemctl edit --full $SERVICE"
+  fi
   systemctl daemon-reload
 fi
 
@@ -339,7 +463,11 @@ if systemctl is-active --quiet "$SERVICE"; then
     IP=$(hostname -I 2>/dev/null | awk '{print $1}')
     [ -n "$IP" ] || IP="адрес-сервера"
     say ""
-    say "Установлено. Откройте http://$IP:${ADDR##*:} и заполните настройки."
+    if [ "$PROXY" = yes ]; then
+      say "Установлено. Откройте http://$IP$BASE_PATH/ и заполните настройки."
+    else
+      say "Установлено. Откройте http://$IP:${ADDR##*:} и заполните настройки."
+    fi
     say ""
     say "Что вводить в разделе «Настройки»:"
     if [ "$MQTT_MODE" = "auth" ] && [ -n "$MQTT_GATEWAY_PASS" ]; then

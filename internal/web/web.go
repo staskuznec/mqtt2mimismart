@@ -7,8 +7,10 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"html/template"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/staskuznec/mqtt2mimismart/internal/link"
@@ -41,8 +43,15 @@ type Status struct {
 }
 
 // Handler собирает маршруты веб-интерфейса.
-func Handler(log *slog.Logger, db *store.Store, version string, status Status) http.Handler {
-	s := &server{log: log, db: db, version: version, status: status, started: time.Now()}
+//
+// basePath — подкаталог, в котором шлюз виден снаружи ("/mqtt"), когда он
+// стоит за веб-сервером рядом с панелью умного дома. Пусто — корень.
+func Handler(log *slog.Logger, db *store.Store, version, basePath string, status Status) http.Handler {
+	basePath = strings.TrimRight(strings.TrimSpace(basePath), "/")
+	s := &server{
+		log: log, db: db, version: version, status: status,
+		base: basePath, pages: buildPages(basePath), started: time.Now(),
+	}
 
 	mux := http.NewServeMux()
 
@@ -75,7 +84,20 @@ func Handler(log *slog.Logger, db *store.Store, version string, status Status) h
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /api/topics", s.topics)
 
-	return s.logRequests(mux)
+	if basePath == "" {
+		return s.logRequests(mux)
+	}
+
+	// Снаружи все адреса начинаются с подкаталога, а маршруты записаны от
+	// корня: срезаем префикс здесь, чтобы не дублировать его в каждом пути.
+	outer := http.NewServeMux()
+	outer.Handle(basePath+"/", http.StripPrefix(basePath, mux))
+	// Без завершающего слэша браузер не найдёт ни одной относительной ссылки,
+	// поэтому уводим на канонический адрес.
+	outer.HandleFunc(basePath, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, basePath+"/", http.StatusMovedPermanently)
+	})
+	return s.logRequests(outer)
 }
 
 type server struct {
@@ -83,7 +105,14 @@ type server struct {
 	db      *store.Store
 	version string
 	status  Status
+	base    string // подкаталог снаружи: "/mqtt" или пусто
+	pages   map[string]*template.Template
 	started time.Time
+}
+
+// redirect уводит на страницу шлюза с учётом подкаталога.
+func (s *server) redirect(w http.ResponseWriter, r *http.Request, path string) {
+	http.Redirect(w, r, s.base+path, http.StatusSeeOther)
 }
 
 // health отдаёт состояние демона в JSON.

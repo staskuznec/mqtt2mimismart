@@ -303,7 +303,7 @@ func (s *server) saveLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.reload(r)
-	http.Redirect(w, r, "/links", http.StatusSeeOther)
+	s.redirect(w, r, "/links")
 }
 
 // savePair собирает из одной формы обе стороны двусторонней привязки.
@@ -374,7 +374,7 @@ func (s *server) toggleLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.reload(r)
-	http.Redirect(w, r, "/links", http.StatusSeeOther)
+	s.redirect(w, r, "/links")
 }
 
 func (s *server) deleteLink(w http.ResponseWriter, r *http.Request) {
@@ -389,7 +389,7 @@ func (s *server) deleteLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.reload(r)
-	http.Redirect(w, r, "/links", http.StatusSeeOther)
+	s.redirect(w, r, "/links")
 }
 
 // previewLink показывает, во что превратится нагрузка и какие байты уйдут.

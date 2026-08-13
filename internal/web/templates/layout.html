@@ -2,6 +2,7 @@
      где интернета может не быть вовсе, а шрифт с чужого сервера превратил бы
      страницу в белый экран. Тема берётся системная. -->
 <meta charset="utf-8">
+<base href="{{base}}/">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}} — mqtt2mimismart</title>
 <style>
@@ -143,13 +144,13 @@
 
 <header>
   <nav>
-    <a href="/"          {{if eq .Nav "overview"}}class="active"{{end}}>Обзор</a>
-    <a href="/topics"    {{if eq .Nav "topics"}}class="active"{{end}}>Топики</a>
-    <a href="/devices"   {{if eq .Nav "devices"}}class="active"{{end}}>Устройства</a>
-    <a href="/links"     {{if eq .Nav "links"}}class="active"{{end}}>Связки</a>
-    <a href="/elements"  {{if eq .Nav "elements"}}class="active"{{end}}>Элементы</a>
-    <a href="/templates" {{if eq .Nav "templates"}}class="active"{{end}}>Шаблоны</a>
-    <a href="/settings"  {{if eq .Nav "settings"}}class="active"{{end}}>Настройки</a>
+    <a href="."          {{if eq .Nav "overview"}}class="active"{{end}}>Обзор</a>
+    <a href="topics"    {{if eq .Nav "topics"}}class="active"{{end}}>Топики</a>
+    <a href="devices"   {{if eq .Nav "devices"}}class="active"{{end}}>Устройства</a>
+    <a href="links"     {{if eq .Nav "links"}}class="active"{{end}}>Связки</a>
+    <a href="elements"  {{if eq .Nav "elements"}}class="active"{{end}}>Элементы</a>
+    <a href="templates" {{if eq .Nav "templates"}}class="active"{{end}}>Шаблоны</a>
+    <a href="settings"  {{if eq .Nav "settings"}}class="active"{{end}}>Настройки</a>
   </nav>
 </header>
 <main>{{template "content" .}}</main>

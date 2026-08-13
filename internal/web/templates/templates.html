@@ -23,9 +23,9 @@
       <td class="num">{{len .Roles}}</td>
       <td class="num">{{len .Links}}</td>
       <td style="white-space:nowrap">
-        <a href="/api/templates/{{.Key}}">открыть</a>
+        <a href="api/templates/{{.Key}}">открыть</a>
         {{if not .Builtin}}
-          <form method="post" action="/templates/{{.Key}}/delete" style="display:inline"
+          <form method="post" action="templates/{{.Key}}/delete" style="display:inline"
                 onsubmit="return confirm('Удалить загруженный шаблон? Встроенный с этим ключом снова станет действующим.')">
             <button type="submit" class="link danger">удалить</button>
           </form>
@@ -143,7 +143,7 @@
 </details>
 
 <h2>Загрузить шаблон</h2>
-<form method="post" action="/templates/upload" enctype="multipart/form-data" class="stack">
+<form method="post" action="templates/upload" enctype="multipart/form-data" class="stack">
   <label>Ключ <span>— по нему шаблон опознаётся; совпал со встроенным — перекроет его</span>
     <input type="text" name="key" placeholder="shelly25-relay"></label>
   <label>Файл <span>— или вставьте JSON ниже</span>

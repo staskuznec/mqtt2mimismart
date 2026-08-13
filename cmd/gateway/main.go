@@ -40,6 +40,7 @@ func run() error {
 	var (
 		addr      = flag.String("addr", "127.0.0.1:8080", "адрес веб-интерфейса, host:port")
 		dbPath    = flag.String("db", "", "путь к файлу базы (по умолчанию "+DefaultDBName+" рядом с бинарником)")
+		basePath  = flag.String("base-path", "", "подкаталог, если шлюз стоит за веб-сервером: /mqtt")
 		logLevel  = flag.String("log-level", "info", "уровень журнала: debug, info, warn, error")
 		logFormat = flag.String("log-format", logging.FormatText, "формат журнала: text или json")
 		showVer   = flag.Bool("version", false, "показать версию и выйти")
@@ -85,7 +86,7 @@ func run() error {
 		"schema", schema,
 		"addr", *addr)
 
-	a, err := app.New(log, db, version, *addr)
+	a, err := app.New(log, db, version, *addr, *basePath)
 	if err != nil {
 		return err
 	}

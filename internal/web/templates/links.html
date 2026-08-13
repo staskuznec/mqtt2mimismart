@@ -6,8 +6,8 @@
   вместе.
 </p>
 <div class="toolbar">
-  <a href="/links/new" class="btn">Новая связка</a>
-  <a href="/devices/new" class="btn ghost">Развернуть шаблон</a>
+  <a href="links/new" class="btn">Новая связка</a>
+  <a href="devices/new" class="btn ghost">Развернуть шаблон</a>
 </div>
 
 {{range .Groups}}
@@ -32,11 +32,11 @@
         <td class="mono">{{.LastValue}}</td>
         <td class="num">{{.Errors}}</td>
         <td style="white-space:nowrap">
-          <a href="/links/{{.ID}}">править</a>
-          <form method="post" action="/links/{{.ID}}/toggle" style="display:inline">
+          <a href="links/{{.ID}}">править</a>
+          <form method="post" action="links/{{.ID}}/toggle" style="display:inline">
             <button type="submit" class="link">{{if .Enabled}}выключить{{else}}включить{{end}}</button>
           </form>
-          <form method="post" action="/links/{{.ID}}/delete" style="display:inline"
+          <form method="post" action="links/{{.ID}}/delete" style="display:inline"
                 onsubmit="return confirm('Удалить связку{{if .Paired}} вместе с обратной стороной{{end}}?')">
             <button type="submit" class="link danger">удалить</button>
           </form>
@@ -50,7 +50,7 @@
 {{else}}
 <p class="empty">
   Связок пока нет. Разверните шаблон устройства — это быстрее всего, — или
-  нажмите «Связать» рядом с нужным топиком в разделе <a href="/topics">Топики</a>.
+  нажмите «Связать» рядом с нужным топиком в разделе <a href="topics">Топики</a>.
 </p>
 {{end}}
 {{end}}

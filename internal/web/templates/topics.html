@@ -22,7 +22,7 @@
         <td>{{.Kind}}{{if .Retained}} · retain{{end}}</td>
         <td class="num">{{.Count}}</td>
         <td class="hint">{{.Ago}}</td>
-        <td><a href="/links/new?topic={{.Topic}}">Связать</a></td>
+        <td><a href="links/new?topic={{.Topic}}">Связать</a></td>
       </tr>
     {{end}}
     </tbody>
@@ -31,7 +31,7 @@
 {{else}}
 <p class="empty">
   Пока пусто. Либо шлюз не подключён к брокеру — смотрите
-  <a href="/">Обзор</a>, — либо по шине никто ничего не публикует.
+  <a href=".">Обзор</a>, — либо по шине никто ничего не публикует.
 </p>
 {{end}}
 {{end}}

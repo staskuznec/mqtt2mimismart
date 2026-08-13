@@ -291,7 +291,7 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.reload(r)
-	http.Redirect(w, r, "/devices", http.StatusSeeOther)
+	s.redirect(w, r, "/devices")
 }
 
 func (s *server) deleteDevice(w http.ResponseWriter, r *http.Request) {
@@ -306,7 +306,7 @@ func (s *server) deleteDevice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.reload(r)
-	http.Redirect(w, r, "/devices", http.StatusSeeOther)
+	s.redirect(w, r, "/devices")
 }
 
 // ---------------------------------------------------------------- Шаблоны
@@ -378,7 +378,7 @@ func (s *server) uploadTemplate(w http.ResponseWriter, r *http.Request) {
 		fail(err.Error())
 		return
 	}
-	http.Redirect(w, r, "/templates?saved="+key, http.StatusSeeOther)
+	s.redirect(w, r, "/templates?saved="+key)
 }
 
 func (s *server) deleteTemplate(w http.ResponseWriter, r *http.Request) {
@@ -386,7 +386,7 @@ func (s *server) deleteTemplate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/templates", http.StatusSeeOther)
+	s.redirect(w, r, "/templates")
 }
 
 // showTemplate отдаёт шаблон как JSON — чтобы скопировать и поправить.

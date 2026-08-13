@@ -34,6 +34,7 @@ type App struct {
 	db      *store.Store
 	version string
 	addr    string
+	base    string // подкаталог снаружи, когда шлюз стоит за веб-сервером
 
 	mqtt   *mqtt.Client
 	shs    *shs.Client
@@ -81,8 +82,11 @@ func (a *App) Elements() []logic.Element {
 
 // New собирает демон. Клиенты создаются только при заполненных настройках:
 // подключаться, не зная куда, всё равно некуда.
-func New(log *slog.Logger, db *store.Store, version, addr string) (*App, error) {
-	a := &App{log: log, db: db, version: version, addr: addr, update: update.New(version)}
+func New(log *slog.Logger, db *store.Store, version, addr, basePath string) (*App, error) {
+	a := &App{
+		log: log, db: db, version: version, addr: addr, base: basePath,
+		update: update.New(version),
+	}
 
 	cfg, err := db.Config(context.Background())
 	if err != nil {
@@ -307,7 +311,7 @@ func (a *App) serve(ctx context.Context) error {
 
 	srv := &http.Server{
 		Addr:    a.addr,
-		Handler: web.Handler(a.log, a.db, a.version, status),
+		Handler: web.Handler(a.log, a.db, a.version, a.base, status),
 
 		// Голые таймауты обязательны: без них одно зависшее соединение
 		// занимает горутину до конца жизни процесса.
