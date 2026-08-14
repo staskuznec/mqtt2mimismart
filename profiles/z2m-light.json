@@ -1,0 +1,111 @@
+{
+  "name": "Zigbee2MQTT — лампа",
+  "model": "zigbee2mqtt light",
+  "note": "Лампа или диммер: включение, выключение и переключение. Яркость профиль только читает — подставить число в готовую команду таблица значений не умеет, для управления яркостью заведите связку вручную. В поле «префикс топиков» укажите zigbee2mqtt/ и понятное имя устройства из веб-интерфейса zigbee2mqtt, например zigbee2mqtt/Кухня выключатель. Если имя менялось после привязки, топик меняется вместе с ним. Топик доступности появляется, только если в zigbee2mqtt включено availability. Без него связку «на связи» можно отключить.",
+  "roles": [
+    {
+      "key": "state",
+      "title": "Лампа",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "dimer-lamp",
+        "script"
+      ],
+      "required": true
+    },
+    {
+      "key": "brightness",
+      "title": "Яркость, 0–254",
+      "form": "byte",
+      "types": [
+        "dimer-lamp",
+        "virtual"
+      ],
+      "hint": "только чтение: задать яркость из умного дома профиль не умеет"
+    },
+    {
+      "key": "battery",
+      "title": "Заряд батареи, %",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "нужен включённый availability в zigbee2mqtt"
+    }
+  ],
+  "links": [
+    {
+      "name": "Лампа — состояние",
+      "direction": "in",
+      "role": "state",
+      "pair": "state",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "ON": "1",
+        "OFF": "0"
+      }
+    },
+    {
+      "name": "Лампа — команда",
+      "direction": "out",
+      "role": "state",
+      "pair": "state",
+      "topic": "{{prefix}}/set",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "{\"state\":\"ON\"}",
+        "off": "{\"state\":\"OFF\"}",
+        "toggle": "{\"state\":\"TOGGLE\"}"
+      }
+    },
+    {
+      "name": "Яркость",
+      "direction": "in",
+      "role": "brightness",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "brightness",
+      "encode": "byte"
+    },
+    {
+      "name": "Заряд батареи",
+      "direction": "in",
+      "role": "battery",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "battery",
+      "encode": "text",
+      "unit": " %",
+      "precision": 0
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/availability",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "online": "1",
+        "offline": "0"
+      }
+    }
+  ]
+}

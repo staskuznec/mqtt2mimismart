@@ -1,0 +1,99 @@
+{
+  "name": "Zigbee2MQTT — датчик движения",
+  "model": "zigbee2mqtt occupancy",
+  "note": "Aqara, Sonoff SNZB-03, Tuya. Освещённость публикуют не все модели. Устройство на батарейке шлёт значения редко — при изменении и раз в несколько часов, — так что «ещё не приходило» после привязки это норма. В поле «префикс топиков» укажите zigbee2mqtt/ и понятное имя устройства из веб-интерфейса zigbee2mqtt, например zigbee2mqtt/Кухня выключатель. Если имя менялось после привязки, топик меняется вместе с ним.",
+  "roles": [
+    {
+      "key": "motion",
+      "title": "Движение",
+      "form": "byte",
+      "types": [
+        "motion-sensor",
+        "door-sensor",
+        "script",
+        "lamp"
+      ],
+      "required": true,
+      "hint": "1 — движение есть"
+    },
+    {
+      "key": "lux",
+      "title": "Освещённость, лк",
+      "form": "text",
+      "types": [
+        "lux-sensor",
+        "virtual"
+      ],
+      "hint": "текстом, а не датчиком: тысячи люксов не помещаются в показание датчика"
+    },
+    {
+      "key": "battery",
+      "title": "Заряд батареи, %",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "нужен включённый availability в zigbee2mqtt"
+    }
+  ],
+  "links": [
+    {
+      "name": "Движение",
+      "direction": "in",
+      "role": "motion",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "occupancy",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    },
+    {
+      "name": "Освещённость",
+      "direction": "in",
+      "role": "lux",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "illuminance",
+      "encode": "text",
+      "unit": " лк",
+      "precision": 0
+    },
+    {
+      "name": "Заряд батареи",
+      "direction": "in",
+      "role": "battery",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "battery",
+      "encode": "text",
+      "unit": " %",
+      "precision": 0
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/availability",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "online": "1",
+        "offline": "0"
+      }
+    }
+  ]
+}

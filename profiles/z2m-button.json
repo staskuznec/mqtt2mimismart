@@ -1,0 +1,103 @@
+{
+  "name": "Zigbee2MQTT — кнопка",
+  "model": "zigbee2mqtt action",
+  "note": "Имена действий у каждой модели свои: single, double, hold, on, off, brightness_move_up и так далее. В профиле заполнены самые частые — посмотрите, что публикует ваша кнопка, на странице «Топики», и поправьте таблицу значений связки. Действие приходит мгновенным событием, поэтому у связки снят отсев повторов: два нажатия подряд должны сработать дважды. Устройство на батарейке шлёт значения редко — при изменении и раз в несколько часов, — так что «ещё не приходило» после привязки это норма. В поле «префикс топиков» укажите zigbee2mqtt/ и понятное имя устройства из веб-интерфейса zigbee2mqtt, например zigbee2mqtt/Кухня выключатель. Если имя менялось после привязки, топик меняется вместе с ним.",
+  "roles": [
+    {
+      "key": "action",
+      "title": "Нажатие",
+      "form": "byte",
+      "types": [
+        "script",
+        "lamp",
+        "switch"
+      ],
+      "required": true,
+      "hint": "чаще всего сюда назначают сценарий"
+    },
+    {
+      "key": "action_text",
+      "title": "Название действия",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "словом, как его шлёт устройство — удобно для настройки"
+    },
+    {
+      "key": "battery",
+      "title": "Заряд батареи, %",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "нужен включённый availability в zigbee2mqtt"
+    }
+  ],
+  "links": [
+    {
+      "name": "Нажатие",
+      "direction": "in",
+      "role": "action",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "action",
+      "encode": "byte",
+      "only_changed": false,
+      "values": {
+        "single": "1",
+        "double": "1",
+        "triple": "1",
+        "hold": "1",
+        "on": "1",
+        "off": "0",
+        "release": "0",
+        "": "0"
+      }
+    },
+    {
+      "name": "Название действия",
+      "direction": "in",
+      "role": "action_text",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "action",
+      "encode": "text",
+      "only_changed": false
+    },
+    {
+      "name": "Заряд батареи",
+      "direction": "in",
+      "role": "battery",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "battery",
+      "encode": "text",
+      "unit": " %",
+      "precision": 0
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/availability",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "online": "1",
+        "offline": "0"
+      }
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "name": "Zigbee2MQTT — датчик открытия",
+  "model": "zigbee2mqtt contact",
+  "note": "Дверь, окно, ворота. Внимание: zigbee2mqtt публикует contact наоборот — true означает «закрыто», — поэтому в связке значения перевёрнуты, и элемент получает единицу именно при открытии. Устройство на батарейке шлёт значения редко — при изменении и раз в несколько часов, — так что «ещё не приходило» после привязки это норма. В поле «префикс топиков» укажите zigbee2mqtt/ и понятное имя устройства из веб-интерфейса zigbee2mqtt, например zigbee2mqtt/Кухня выключатель. Если имя менялось после привязки, топик меняется вместе с ним.",
+  "roles": [
+    {
+      "key": "contact",
+      "title": "Открытие",
+      "form": "byte",
+      "types": [
+        "door-sensor",
+        "script",
+        "lamp"
+      ],
+      "required": true,
+      "hint": "1 — открыто"
+    },
+    {
+      "key": "battery",
+      "title": "Заряд батареи, %",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "нужен включённый availability в zigbee2mqtt"
+    }
+  ],
+  "links": [
+    {
+      "name": "Открытие",
+      "direction": "in",
+      "role": "contact",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "contact",
+      "encode": "byte",
+      "values": {
+        "false": "1",
+        "true": "0"
+      }
+    },
+    {
+      "name": "Заряд батареи",
+      "direction": "in",
+      "role": "battery",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "battery",
+      "encode": "text",
+      "unit": " %",
+      "precision": 0
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/availability",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "online": "1",
+        "offline": "0"
+      }
+    }
+  ]
+}

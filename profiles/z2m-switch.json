@@ -1,0 +1,73 @@
+{
+  "name": "Zigbee2MQTT — выключатель или реле",
+  "model": "zigbee2mqtt switch",
+  "note": "Реле, встраиваемый модуль, умный выключатель без измерения. В поле «префикс топиков» укажите zigbee2mqtt/ и понятное имя устройства из веб-интерфейса zigbee2mqtt, например zigbee2mqtt/Кухня выключатель. Если имя менялось после привязки, топик меняется вместе с ним. Топик доступности появляется, только если в zigbee2mqtt включено availability. Без него связку «на связи» можно отключить.",
+  "roles": [
+    {
+      "key": "state",
+      "title": "Выключатель",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script",
+        "valve"
+      ],
+      "required": true
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "нужен включённый availability в zigbee2mqtt"
+    }
+  ],
+  "links": [
+    {
+      "name": "Выключатель — состояние",
+      "direction": "in",
+      "role": "state",
+      "pair": "state",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "ON": "1",
+        "OFF": "0"
+      }
+    },
+    {
+      "name": "Выключатель — команда",
+      "direction": "out",
+      "role": "state",
+      "pair": "state",
+      "topic": "{{prefix}}/set",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "{\"state\":\"ON\"}",
+        "off": "{\"state\":\"OFF\"}",
+        "toggle": "{\"state\":\"TOGGLE\"}"
+      }
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/availability",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "online": "1",
+        "offline": "0"
+      }
+    }
+  ]
+}

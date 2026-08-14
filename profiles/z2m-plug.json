@@ -1,0 +1,148 @@
+{
+  "name": "Zigbee2MQTT — розетка с измерением",
+  "model": "zigbee2mqtt plug",
+  "note": "Розетка со счётчиком. Часть моделей публикует не все четыре величины — лишние роли просто не назначайте. В поле «префикс топиков» укажите zigbee2mqtt/ и понятное имя устройства из веб-интерфейса zigbee2mqtt, например zigbee2mqtt/Кухня выключатель. Если имя менялось после привязки, топик меняется вместе с ним.",
+  "roles": [
+    {
+      "key": "state",
+      "title": "Розетка",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ],
+      "required": true
+    },
+    {
+      "key": "power",
+      "title": "Мощность, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "voltage",
+      "title": "Напряжение сети, В",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "current",
+      "title": "Ток, А",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "energy",
+      "title": "Энергия, кВт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "нужен включённый availability в zigbee2mqtt"
+    }
+  ],
+  "links": [
+    {
+      "name": "Розетка — состояние",
+      "direction": "in",
+      "role": "state",
+      "pair": "state",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "ON": "1",
+        "OFF": "0"
+      }
+    },
+    {
+      "name": "Розетка — команда",
+      "direction": "out",
+      "role": "state",
+      "pair": "state",
+      "topic": "{{prefix}}/set",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "{\"state\":\"ON\"}",
+        "off": "{\"state\":\"OFF\"}",
+        "toggle": "{\"state\":\"TOGGLE\"}"
+      }
+    },
+    {
+      "name": "Мощность",
+      "direction": "in",
+      "role": "power",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "power",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Напряжение сети",
+      "direction": "in",
+      "role": "voltage",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "voltage",
+      "encode": "text",
+      "unit": " В",
+      "precision": 0
+    },
+    {
+      "name": "Ток",
+      "direction": "in",
+      "role": "current",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "current",
+      "encode": "text",
+      "unit": " А",
+      "precision": 2
+    },
+    {
+      "name": "Энергия",
+      "direction": "in",
+      "role": "energy",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "energy",
+      "encode": "text",
+      "unit": " кВт",
+      "precision": 1
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/availability",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "online": "1",
+        "offline": "0"
+      }
+    }
+  ]
+}

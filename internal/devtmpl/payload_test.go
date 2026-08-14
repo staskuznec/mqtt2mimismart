@@ -41,6 +41,13 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 
 		tasmotaTH = `{"Time":"2018.02.01 22:52:09",` +
 			`"AM2301":{"Temperature":15.5,"Humidity":50.6},"TempUnit":"C"}`
+
+		// Нагрузка Zigbee2MQTT: всё состояние устройства одним объектом.
+		z2mPlug = `{"state":"ON","power":78,"voltage":230,"current":0.34,` +
+			`"energy":1.234,"linkquality":60}`
+
+		z2mSensor = `{"temperature":27.34,"humidity":44.72,"battery":87,` +
+			`"voltage":3000,"linkquality":60}`
 	)
 
 	for _, tc := range []struct {
@@ -105,6 +112,30 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 		{"tasmota-ds18b20", "Температура",
 			`{"Time":"2018.02.01 21:29:40","DS18B20":{"Temperature":19.7},"TempUnit":"C"}`,
 			"19.7", "b3 13"},
+
+		// Zigbee2MQTT: всё состояние устройства одним объектом на один топик.
+		{"z2m-plug", "Розетка — состояние", z2mPlug, "1", "01"},
+		{"z2m-plug", "Мощность", z2mPlug, "78 Вт", ""},
+		{"z2m-plug", "Напряжение сети", z2mPlug, "230 В", ""},
+		{"z2m-plug", "Ток", z2mPlug, "0.34 А", ""},
+		{"z2m-plug", "Энергия", z2mPlug, "1.2 кВт", ""},
+		{"z2m-temp-hum", "Температура", z2mSensor, "27.34", "57 1b"},
+		{"z2m-temp-hum", "Влажность", z2mSensor, "44.72", "b8 2c"},
+		{"z2m-temp-hum", "Заряд батареи", z2mSensor, "87 %", ""},
+		{"z2m-motion", "Движение", `{"occupancy":true,"illuminance":152}`, "1", "01"},
+		{"z2m-motion", "Освещённость", `{"occupancy":true,"illuminance":152}`, "152 лк", ""},
+		{"z2m-water-leak", "Протечка", `{"water_leak":true,"battery":100}`, "1", "01"},
+		{"z2m-button", "Нажатие", `{"action":"double","battery":100}`, "1", "01"},
+
+		// Поле contact у zigbee2mqtt устроено наоборот: true означает
+		// «закрыто». Если перевернуть его обратно, датчик открытия покажет
+		// открытую дверь закрытой — и наоборот.
+		{"z2m-contact", "Открытие", `{"contact":false,"battery":100}`, "1", "01"},
+		{"z2m-contact", "Открытие", `{"contact":true,"battery":100}`, "0", "00"},
+
+		// Доступность здесь тоже объект, а не слово.
+		{"z2m-switch", "На связи", `{"state":"online"}`, "1", "01"},
+		{"z2m-switch", "На связи", `{"state":"offline"}`, "0", "00"},
 	} {
 		t.Run(tc.profile+"/"+tc.link, func(t *testing.T) {
 			l := linkFromProfile(t, tc.profile, tc.link)
@@ -176,6 +207,31 @@ func TestTasmotaCommandsArePlainWords(t *testing.T) {
 	} {
 		t.Run(tc.want, func(t *testing.T) {
 			l := linkFromProfile(t, "tasmota-relay1", "Канал — команда")
+
+			payload, err := l.ToPayload([]byte{tc.state})
+			if err != nil {
+				t.Fatalf("ToPayload: %v", err)
+			}
+			if payload != tc.want {
+				t.Errorf("нагрузка %q, ожидалось %q", payload, tc.want)
+			}
+		})
+	}
+}
+
+// Zigbee2MQTT принимает команду объектом, а переключение понимает само —
+// как и Tasmota, текущее состояние знать не нужно.
+func TestZ2MCommandsAreJSON(t *testing.T) {
+	for _, tc := range []struct {
+		state byte
+		want  string
+	}{
+		{1, `{"state":"ON"}`},
+		{0, `{"state":"OFF"}`},
+		{0xFF, `{"state":"TOGGLE"}`},
+	} {
+		t.Run(tc.want, func(t *testing.T) {
+			l := linkFromProfile(t, "z2m-switch", "Выключатель — команда")
 
 			payload, err := l.ToPayload([]byte{tc.state})
 			if err != nil {

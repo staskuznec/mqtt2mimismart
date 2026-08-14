@@ -1,0 +1,91 @@
+{
+  "name": "Zigbee2MQTT — датчик температуры и влажности",
+  "model": "zigbee2mqtt sensor",
+  "note": "Aqara, Sonoff SNZB-02, Tuya и любой другой датчик климата. Протокол умного дома передаёт показания датчика без знака, поэтому температура ниже нуля придёт нулём. Для уличного датчика заведите текстовый элемент вместо датчика температуры. Устройство на батарейке шлёт значения редко — при изменении и раз в несколько часов, — так что «ещё не приходило» после привязки это норма. В поле «префикс топиков» укажите zigbee2mqtt/ и понятное имя устройства из веб-интерфейса zigbee2mqtt, например zigbee2mqtt/Кухня выключатель. Если имя менялось после привязки, топик меняется вместе с ним.",
+  "roles": [
+    {
+      "key": "temp",
+      "title": "Температура, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ],
+      "required": true
+    },
+    {
+      "key": "hum",
+      "title": "Влажность, %",
+      "form": "sensor",
+      "types": [
+        "humidity-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "battery",
+      "title": "Заряд батареи, %",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "нужен включённый availability в zigbee2mqtt"
+    }
+  ],
+  "links": [
+    {
+      "name": "Температура",
+      "direction": "in",
+      "role": "temp",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "temperature",
+      "encode": "sensor"
+    },
+    {
+      "name": "Влажность",
+      "direction": "in",
+      "role": "hum",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "humidity",
+      "encode": "sensor"
+    },
+    {
+      "name": "Заряд батареи",
+      "direction": "in",
+      "role": "battery",
+      "topic": "{{prefix}}",
+      "extract": "json",
+      "extract_path": "battery",
+      "encode": "text",
+      "unit": " %",
+      "precision": 0
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/availability",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "online": "1",
+        "offline": "0"
+      }
+    }
+  ]
+}
