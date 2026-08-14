@@ -29,6 +29,18 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 			`"last_direction":"open","current_pos":100}`
 
 		inputStatus = `{"id":0,"state":true}`
+
+		// Нагрузка Tasmota: измерения и состояние приходят разными
+		// сообщениями на разные топики, поэтому и объекты разные.
+		tasmotaSensor = `{"Time":"2018.02.04 23:17:01","ENERGY":{"Total":3.185,` +
+			`"Yesterday":3.058,"Today":0.127,"Power":78,"Factor":0.97,` +
+			`"Voltage":221,"Current":0.334}}`
+
+		tasmotaState = `{"Time":"2018.02.15 01:00:50","Uptime":"1 02:33:26",` +
+			`"POWER":"OFF","Wifi":{"AP":1,"SSId":"XXX","RSSI":72,"Signal":-64}}`
+
+		tasmotaTH = `{"Time":"2018.02.01 22:52:09",` +
+			`"AM2301":{"Temperature":15.5,"Humidity":50.6},"TempUnit":"C"}`
 	)
 
 	for _, tc := range []struct {
@@ -69,6 +81,30 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 
 		// Завещание брокеру — единственный топик Gen2 без JSON.
 		{"shellyplus1", "На связи", "true", "1", "01"},
+
+		// Tasmota. Состояние приходит простым словом на stat, а не объектом:
+		// это отдельный топик, и разбирать там нечего.
+		{"tasmota-relay1", "Канал — состояние", "ON", "1", "01"},
+		{"tasmota-relay1", "Канал — состояние", "OFF", "0", "00"},
+		{"tasmota-relay4", "Канал 3 — состояние", "ON", "1", "01"},
+		{"tasmota-relay1", "На связи", "Online", "1", "01"},
+		{"tasmota-relay1", "На связи", "Offline", "0", "00"},
+
+		// Измерения — объектом на tele, ключи вложены в ENERGY.
+		// Total у Tasmota уже в киловатт-часах, множителя быть не должно.
+		{"tasmota-plug", "Мощность", tasmotaSensor, "78 Вт", ""},
+		{"tasmota-plug", "Напряжение сети", tasmotaSensor, "221 В", ""},
+		{"tasmota-plug", "Ток", tasmotaSensor, "0.33 А", ""},
+		{"tasmota-plug", "Энергия всего", tasmotaSensor, "3.2 кВт", ""},
+		{"tasmota-plug", "Энергия за сегодня", tasmotaSensor, "0.1 кВт", ""},
+		{"tasmota-plug", "Уровень сигнала WiFi", tasmotaState, "72 %", ""},
+
+		// У датчиков ключ в сообщении — имя чипа, и перепутать его легко.
+		{"tasmota-th", "Температура", tasmotaTH, "15.5", "80 0f"},
+		{"tasmota-th", "Влажность", tasmotaTH, "50.6", "99 32"},
+		{"tasmota-ds18b20", "Температура",
+			`{"Time":"2018.02.01 21:29:40","DS18B20":{"Temperature":19.7},"TempUnit":"C"}`,
+			"19.7", "b3 13"},
 	} {
 		t.Run(tc.profile+"/"+tc.link, func(t *testing.T) {
 			l := linkFromProfile(t, tc.profile, tc.link)
@@ -119,6 +155,34 @@ func TestGen2CommandsAreRPC(t *testing.T) {
 			}
 			if !strings.HasPrefix(payload, "{") {
 				t.Errorf("нагрузка %q не объект JSON", payload)
+			}
+		})
+	}
+}
+
+// У Tasmota команда — одно слово, и переключение она понимает сама. Это и
+// делает её самой удобной прошивкой для нас: нажатие 0xFF уходит как TOGGLE,
+// и знать текущее состояние реле шлюзу не нужно.
+func TestTasmotaCommandsArePlainWords(t *testing.T) {
+	for _, tc := range []struct {
+		state byte
+		want  string
+	}{
+		{1, "ON"},
+		{8, "ON"},
+		{0, "OFF"},
+		{9, "OFF"},
+		{0xFF, "TOGGLE"},
+	} {
+		t.Run(tc.want, func(t *testing.T) {
+			l := linkFromProfile(t, "tasmota-relay1", "Канал — команда")
+
+			payload, err := l.ToPayload([]byte{tc.state})
+			if err != nil {
+				t.Fatalf("ToPayload: %v", err)
+			}
+			if payload != tc.want {
+				t.Errorf("нагрузка %q, ожидалось %q", payload, tc.want)
 			}
 		})
 	}

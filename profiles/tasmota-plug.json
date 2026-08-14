@@ -1,0 +1,182 @@
+{
+  "name": "Tasmota — розетка с измерением",
+  "model": "Tasmota",
+  "note": "Sonoff POW, NOUS A1T, Gosund SP111, BlitzWolf SHP и другие розетки со счётчиком. В поле «префикс топиков» укажите только имя устройства из настроек Tasmota (MQTT → Topic), без stat, cmnd и tele — они уже в связках. Измерения приходят раз в TelePeriod, по умолчанию это 300 секунд; командой TelePeriod 30 период уменьшается до полуминуты. Состояние реле Tasmota по умолчанию не помечает сохранённым, поэтому после перезапуска шлюза оно неизвестно до первого переключения. Команда PowerRetain 1 на устройстве это чинит.",
+  "roles": [
+    {
+      "key": "ch0",
+      "title": "Канал",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ],
+      "required": true
+    },
+    {
+      "key": "power",
+      "title": "Мощность, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "voltage",
+      "title": "Напряжение сети, В",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "current",
+      "title": "Ток, А",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "energy",
+      "title": "Энергия всего, кВт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "energy_today",
+      "title": "Энергия за сегодня, кВт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "wifi",
+      "title": "Уровень сигнала WiFi, %",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "по завещанию брокеру: пропало питание — элемент погаснет"
+    }
+  ],
+  "links": [
+    {
+      "name": "Канал — состояние",
+      "direction": "in",
+      "role": "ch0",
+      "pair": "ch0",
+      "topic": "stat/{{prefix}}/POWER",
+      "encode": "byte",
+      "values": {
+        "ON": "1",
+        "OFF": "0"
+      }
+    },
+    {
+      "name": "Канал — команда",
+      "direction": "out",
+      "role": "ch0",
+      "pair": "ch0",
+      "topic": "cmnd/{{prefix}}/POWER",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "ON",
+        "off": "OFF",
+        "toggle": "TOGGLE"
+      }
+    },
+    {
+      "name": "Мощность",
+      "direction": "in",
+      "role": "power",
+      "topic": "tele/{{prefix}}/SENSOR",
+      "extract": "json",
+      "extract_path": "ENERGY.Power",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Напряжение сети",
+      "direction": "in",
+      "role": "voltage",
+      "topic": "tele/{{prefix}}/SENSOR",
+      "extract": "json",
+      "extract_path": "ENERGY.Voltage",
+      "encode": "text",
+      "unit": " В",
+      "precision": 0
+    },
+    {
+      "name": "Ток",
+      "direction": "in",
+      "role": "current",
+      "topic": "tele/{{prefix}}/SENSOR",
+      "extract": "json",
+      "extract_path": "ENERGY.Current",
+      "encode": "text",
+      "unit": " А",
+      "precision": 2
+    },
+    {
+      "name": "Энергия всего",
+      "direction": "in",
+      "role": "energy",
+      "topic": "tele/{{prefix}}/SENSOR",
+      "extract": "json",
+      "extract_path": "ENERGY.Total",
+      "encode": "text",
+      "unit": " кВт",
+      "precision": 1
+    },
+    {
+      "name": "Энергия за сегодня",
+      "direction": "in",
+      "role": "energy_today",
+      "topic": "tele/{{prefix}}/SENSOR",
+      "extract": "json",
+      "extract_path": "ENERGY.Today",
+      "encode": "text",
+      "unit": " кВт",
+      "precision": 1
+    },
+    {
+      "name": "Уровень сигнала WiFi",
+      "direction": "in",
+      "role": "wifi",
+      "topic": "tele/{{prefix}}/STATE",
+      "extract": "json",
+      "extract_path": "Wifi.RSSI",
+      "encode": "text",
+      "unit": " %",
+      "precision": 0
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "tele/{{prefix}}/LWT",
+      "encode": "byte",
+      "values": {
+        "Online": "1",
+        "Offline": "0"
+      }
+    }
+  ]
+}

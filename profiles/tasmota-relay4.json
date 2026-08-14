@@ -1,0 +1,198 @@
+{
+  "name": "Tasmota — реле на четыре канала",
+  "model": "Tasmota",
+  "note": "Sonoff 4CH и подобные. Каналы независимы. В поле «префикс топиков» укажите только имя устройства из настроек Tasmota (MQTT → Topic), без stat, cmnd и tele — они уже в связках. Измерения приходят раз в TelePeriod, по умолчанию это 300 секунд; командой TelePeriod 30 период уменьшается до полуминуты. Состояние реле Tasmota по умолчанию не помечает сохранённым, поэтому после перезапуска шлюза оно неизвестно до первого переключения. Команда PowerRetain 1 на устройстве это чинит.",
+  "roles": [
+    {
+      "key": "ch0",
+      "title": "Канал 1",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ],
+      "required": true
+    },
+    {
+      "key": "ch1",
+      "title": "Канал 2",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ],
+      "required": false
+    },
+    {
+      "key": "ch2",
+      "title": "Канал 3",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ],
+      "required": false
+    },
+    {
+      "key": "ch3",
+      "title": "Канал 4",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ],
+      "required": false
+    },
+    {
+      "key": "wifi",
+      "title": "Уровень сигнала WiFi, %",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "по завещанию брокеру: пропало питание — элемент погаснет"
+    }
+  ],
+  "links": [
+    {
+      "name": "Канал 1 — состояние",
+      "direction": "in",
+      "role": "ch0",
+      "pair": "ch0",
+      "topic": "stat/{{prefix}}/POWER1",
+      "encode": "byte",
+      "values": {
+        "ON": "1",
+        "OFF": "0"
+      }
+    },
+    {
+      "name": "Канал 1 — команда",
+      "direction": "out",
+      "role": "ch0",
+      "pair": "ch0",
+      "topic": "cmnd/{{prefix}}/POWER1",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "ON",
+        "off": "OFF",
+        "toggle": "TOGGLE"
+      }
+    },
+    {
+      "name": "Канал 2 — состояние",
+      "direction": "in",
+      "role": "ch1",
+      "pair": "ch1",
+      "topic": "stat/{{prefix}}/POWER2",
+      "encode": "byte",
+      "values": {
+        "ON": "1",
+        "OFF": "0"
+      }
+    },
+    {
+      "name": "Канал 2 — команда",
+      "direction": "out",
+      "role": "ch1",
+      "pair": "ch1",
+      "topic": "cmnd/{{prefix}}/POWER2",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "ON",
+        "off": "OFF",
+        "toggle": "TOGGLE"
+      }
+    },
+    {
+      "name": "Канал 3 — состояние",
+      "direction": "in",
+      "role": "ch2",
+      "pair": "ch2",
+      "topic": "stat/{{prefix}}/POWER3",
+      "encode": "byte",
+      "values": {
+        "ON": "1",
+        "OFF": "0"
+      }
+    },
+    {
+      "name": "Канал 3 — команда",
+      "direction": "out",
+      "role": "ch2",
+      "pair": "ch2",
+      "topic": "cmnd/{{prefix}}/POWER3",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "ON",
+        "off": "OFF",
+        "toggle": "TOGGLE"
+      }
+    },
+    {
+      "name": "Канал 4 — состояние",
+      "direction": "in",
+      "role": "ch3",
+      "pair": "ch3",
+      "topic": "stat/{{prefix}}/POWER4",
+      "encode": "byte",
+      "values": {
+        "ON": "1",
+        "OFF": "0"
+      }
+    },
+    {
+      "name": "Канал 4 — команда",
+      "direction": "out",
+      "role": "ch3",
+      "pair": "ch3",
+      "topic": "cmnd/{{prefix}}/POWER4",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "ON",
+        "off": "OFF",
+        "toggle": "TOGGLE"
+      }
+    },
+    {
+      "name": "Уровень сигнала WiFi",
+      "direction": "in",
+      "role": "wifi",
+      "topic": "tele/{{prefix}}/STATE",
+      "extract": "json",
+      "extract_path": "Wifi.RSSI",
+      "encode": "text",
+      "unit": " %",
+      "precision": 0
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "tele/{{prefix}}/LWT",
+      "encode": "byte",
+      "values": {
+        "Online": "1",
+        "Offline": "0"
+      }
+    }
+  ]
+}

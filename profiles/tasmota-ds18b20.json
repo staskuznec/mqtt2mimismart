@@ -1,0 +1,70 @@
+{
+  "name": "Tasmota — датчик температуры DS18B20",
+  "model": "Tasmota DS18B20",
+  "note": "Однопроводный датчик температуры. Если на шине несколько датчиков, Tasmota нумерует их — DS18B20-1, DS18B20-2 — и путь в связке надо поправить под нужный. В поле «префикс топиков» укажите только имя устройства из настроек Tasmota (MQTT → Topic), без stat, cmnd и tele — они уже в связках. Измерения приходят раз в TelePeriod, по умолчанию это 300 секунд; командой TelePeriod 30 период уменьшается до полуминуты.",
+  "roles": [
+    {
+      "key": "temp",
+      "title": "Температура, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ],
+      "required": true
+    },
+    {
+      "key": "wifi",
+      "title": "Уровень сигнала WiFi, %",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "по завещанию брокеру: пропало питание — элемент погаснет"
+    }
+  ],
+  "links": [
+    {
+      "name": "Температура",
+      "direction": "in",
+      "role": "temp",
+      "topic": "tele/{{prefix}}/SENSOR",
+      "extract": "json",
+      "extract_path": "DS18B20.Temperature",
+      "encode": "sensor"
+    },
+    {
+      "name": "Уровень сигнала WiFi",
+      "direction": "in",
+      "role": "wifi",
+      "topic": "tele/{{prefix}}/STATE",
+      "extract": "json",
+      "extract_path": "Wifi.RSSI",
+      "encode": "text",
+      "unit": " %",
+      "precision": 0
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "tele/{{prefix}}/LWT",
+      "encode": "byte",
+      "values": {
+        "Online": "1",
+        "Offline": "0"
+      }
+    }
+  ]
+}
