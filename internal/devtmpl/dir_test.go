@@ -3,6 +3,7 @@ package devtmpl
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -170,5 +171,156 @@ func TestSaveRejectsPathEscape(t *testing.T) {
 		if err := d.Save(key, []byte(`{}`)); err == nil {
 			t.Errorf("ключ %q принят", key)
 		}
+	}
+}
+
+// Исправление в поставляемом профиле должно доезжать до объекта. Узнать о нём
+// оттуда больше неоткуда, а профиль с неверным путём в JSON молчит, не жалуясь:
+// связка есть, ошибок нет, значений просто не появляется.
+func TestSeedUpdatesUntouchedProfile(t *testing.T) {
+	d := openDir(t)
+
+	path := filepath.Join(d.Path(), "shelly1.json")
+	bundled, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("чтение: %v", err)
+	}
+
+	// Кладём вид, в котором профиль якобы приехал прошлым обновлением, и
+	// записываем его отпечаток: для раскладки это значит «клали мы, с тех пор
+	// никто не трогал».
+	old := strings.Replace(string(bundled), `"name": "Shelly 1`, `"name": "Прошлая версия`, 1)
+	if old == string(bundled) {
+		t.Fatal("подмена названия не сработала — профиль изменился")
+	}
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatalf("запись: %v", err)
+	}
+	if err := d.writeState(map[string]string{"shelly1": checksum([]byte(old))}); err != nil {
+		t.Fatalf("отпечатки: %v", err)
+	}
+
+	// Повторное открытие — как перезапуск шлюза после обновления.
+	again, err := Open(d.Path())
+	if err != nil {
+		t.Fatalf("повторное Open: %v", err)
+	}
+
+	got, err := again.Raw("shelly1")
+	if err != nil {
+		t.Fatalf("Raw: %v", err)
+	}
+	if string(got) != string(bundled) {
+		t.Error("профиль не обновился из поставки")
+	}
+	if !slices.Contains(again.Seeded().Updated, "shelly1") {
+		t.Errorf("обновление не отмечено: %+v", again.Seeded())
+	}
+}
+
+// Правка человека переживает и то обновление, в котором поставляемый профиль
+// изменился: потерять чужую работу хуже, чем не довезти исправление.
+func TestSeedKeepsChangedProfileOnUpdate(t *testing.T) {
+	d := openDir(t)
+
+	path := filepath.Join(d.Path(), "shelly1.json")
+	bundled, _ := os.ReadFile(path)
+	mine := strings.Replace(string(bundled), `"name": "Shelly 1`, `"name": "Моя правка`, 1)
+	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
+		t.Fatalf("запись: %v", err)
+	}
+	// Отпечаток остался от того вида, который клали мы, — значит файл трогали.
+	if err := d.writeState(map[string]string{"shelly1": checksum(bundled)}); err != nil {
+		t.Fatalf("отпечатки: %v", err)
+	}
+
+	again, err := Open(d.Path())
+	if err != nil {
+		t.Fatalf("повторное Open: %v", err)
+	}
+	got, _ := again.Raw("shelly1")
+	if string(got) != mine {
+		t.Error("правка затёрта обновлением")
+	}
+	if !slices.Contains(again.Seeded().Kept, "shelly1") {
+		t.Errorf("профиль не отмечен как оставленный: %+v", again.Seeded())
+	}
+}
+
+// Файл отпечатков лежит рядом с профилями, но профилем не является: попав в
+// список, он висел бы там строкой с ошибкой разбора.
+func TestStateFileIsNotListed(t *testing.T) {
+	d := openDir(t)
+
+	if _, err := os.Stat(filepath.Join(d.Path(), stateFile)); err != nil {
+		t.Fatalf("отпечатки не записаны: %v", err)
+	}
+
+	items, err := d.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, it := range items {
+		if strings.HasPrefix(it.Key, ".") {
+			t.Errorf("служебный файл показан профилем: %s", it.Key)
+		}
+	}
+}
+
+// Если исправление вышло, а профиль правлен вручную, об этом надо сказать: сам
+// человек об упущенном исправлении не узнает никак. Просто правленый профиль
+// поводом для предупреждения не является — иначе оно висело бы при каждом
+// запуске у всех, кто хоть раз что-то настроил под себя.
+func TestSeedReportsMissedFix(t *testing.T) {
+	d := openDir(t)
+
+	path := filepath.Join(d.Path(), "shelly1.json")
+	bundled, _ := os.ReadFile(path)
+	mine := strings.Replace(string(bundled), `"name": "Shelly 1`, `"name": "Моя правка`, 1)
+	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
+		t.Fatalf("запись: %v", err)
+	}
+
+	// Отпечаток остался от прошлой поставки: она отличается и от нынешней, и
+	// от правки — значит с тех пор профиль в поставке менялся.
+	if err := d.writeState(map[string]string{
+		"shelly1": checksum([]byte("вид из прошлой поставки")),
+	}); err != nil {
+		t.Fatalf("отпечатки: %v", err)
+	}
+
+	again, err := Open(d.Path())
+	if err != nil {
+		t.Fatalf("повторное Open: %v", err)
+	}
+	if got, _ := again.Raw("shelly1"); string(got) != mine {
+		t.Error("правка затёрта")
+	}
+	if !slices.Contains(again.Seeded().Stale, "shelly1") {
+		t.Errorf("упущенное исправление не отмечено: %+v", again.Seeded())
+	}
+}
+
+// А вот у профиля, который просто правлен под себя, ничего не упущено: в
+// поставке он с прошлого раза не менялся.
+func TestEditedProfileWithoutNewVersionIsNotStale(t *testing.T) {
+	d := openDir(t)
+
+	path := filepath.Join(d.Path(), "shelly1.json")
+	bundled, _ := os.ReadFile(path)
+	mine := strings.Replace(string(bundled), `"name": "Shelly 1`, `"name": "Моя правка`, 1)
+	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
+		t.Fatalf("запись: %v", err)
+	}
+	if err := d.writeState(map[string]string{"shelly1": checksum(bundled)}); err != nil {
+		t.Fatalf("отпечатки: %v", err)
+	}
+
+	again, err := Open(d.Path())
+	if err != nil {
+		t.Fatalf("повторное Open: %v", err)
+	}
+	if slices.Contains(again.Seeded().Stale, "shelly1") {
+		t.Error("правленый профиль отмечен как упустивший исправление, хотя в поставке ничего не менялось")
 	}
 }

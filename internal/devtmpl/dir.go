@@ -1,6 +1,9 @@
 package devtmpl
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,11 +18,31 @@ import (
 // бинарник они были бы доступны только через веб, а это неудобно ровно тогда,
 // когда неудобнее всего — при разборе, почему модель работает не так.
 type Dir struct {
-	path string
+	path   string
+	seeded SeedResult
 }
 
 // Расширение файла шаблона.
 const ext = ".json"
+
+// stateFile — отпечатки того, что раскладка клала сама.
+//
+// Лежит рядом с шаблонами и в список не попадает: имена, начинающиеся с
+// точки, [Dir.List] пропускает.
+const stateFile = ".bundled.json"
+
+// SeedResult — что раскладка сделала с шаблонами при запуске.
+type SeedResult struct {
+	Added   []string // появились впервые
+	Updated []string // подтянуто исправление из поставки
+	Kept    []string // оставлены как есть: правлены руками
+
+	// Stale — те из Kept, мимо которых прошло настоящее исправление: в
+	// поставке профиль с прошлого раза изменился, а файл правлен вручную.
+	// Только об этом и стоит предупреждать. Просто правленый профиль —
+	// обычное дело, и говорить о нём при каждом запуске незачем.
+	Stale []string
+}
 
 // Open открывает каталог, создавая его при необходимости, и раскладывает туда
 // шаблоны, которые едут в бинарнике.
@@ -38,30 +61,122 @@ func Open(path string) (*Dir, error) {
 // Path возвращает путь к каталогу.
 func (d *Dir) Path() string { return d.path }
 
-// seed выкладывает встроенные шаблоны, которых ещё нет на диске.
+// Seeded сообщает, что раскладка сделала с шаблонами при запуске.
+func (d *Dir) Seeded() SeedResult { return d.seeded }
+
+// seed выкладывает поставляемые шаблоны и подтягивает их исправления.
 //
-// Только отсутствующие: правки в файлах — работа человека, и обновление шлюза
-// не вправе её затирать. Новые модели при этом появляются сами.
+// Правки в файлах — работа человека, и обновление шлюза не вправе её затирать.
+// Но и оставить исправленный шаблон лежать на объекте в прежнем виде нельзя:
+// узнать об исправлении оттуда неоткуда, а профиль с неверным путём молчит, не
+// жалуясь.
+//
+// Поэтому рядом хранится отпечаток того, что раскладка клала сама. Файл,
+// совпадающий с отпечатком, никто не трогал — его можно обновить молча. Всё
+// остальное остаётся как есть и помечается в вебе как изменённое.
 func (d *Dir) seed() error {
 	builtin, err := Builtin()
 	if err != nil {
 		return err
 	}
 
+	known := d.readState()
+	next := make(map[string]string, len(builtin))
+
 	for _, t := range builtin {
-		path := filepath.Join(d.path, t.Key+ext)
-		if _, err := os.Stat(path); err == nil {
-			continue // файл уже есть, не трогаем
-		}
 		body, err := templateFS.ReadFile(t.Key + ext)
 		if err != nil {
-			return fmt.Errorf("devtmpl: чтение встроенного %s: %w", t.Key, err)
+			return fmt.Errorf("devtmpl: чтение поставляемого %s: %w", t.Key, err)
 		}
-		if err := os.WriteFile(path, body, 0o644); err != nil {
-			return fmt.Errorf("devtmpl: запись %s: %w", path, err)
+		sum := checksum(body)
+		path := filepath.Join(d.path, t.Key+ext)
+
+		current, err := os.ReadFile(path)
+		switch {
+		case os.IsNotExist(err):
+			if err := write(path, body); err != nil {
+				return err
+			}
+			next[t.Key] = sum
+			d.seeded.Added = append(d.seeded.Added, t.Key)
+
+		case err != nil:
+			return fmt.Errorf("devtmpl: чтение %s: %w", path, err)
+
+		case checksum(current) == sum:
+			// Уже то же самое. Отпечаток при этом ставим: так шлюз, впервые
+			// поднявшийся с этой раскладкой, признаёт нетронутые файлы
+			// своими и в дальнейшем обновляет их сам.
+			next[t.Key] = sum
+
+		case known[t.Key] != "" && known[t.Key] == checksum(current):
+			// Наша копия, к которой никто не притрагивался.
+			if err := write(path, body); err != nil {
+				return err
+			}
+			next[t.Key] = sum
+			d.seeded.Updated = append(d.seeded.Updated, t.Key)
+
+		default:
+			// Правлен руками — или пришёл из версии, когда отпечатков ещё не
+			// было. Отличить одно от другого нельзя, поэтому не трогаем:
+			// потерять чужую правку хуже, чем не довезти исправление.
+			// Прежний отпечаток сохраняем, иначе следующее обновление сочло
+			// бы этот файл нашим и затёрло.
+			d.seeded.Kept = append(d.seeded.Kept, t.Key)
+			if prev := known[t.Key]; prev != "" {
+				next[t.Key] = prev
+				if prev != sum {
+					// С прошлого раза поставляемый профиль изменился, а этот
+					// файл правлен: исправление прошло мимо него.
+					d.seeded.Stale = append(d.seeded.Stale, t.Key)
+				}
+			}
 		}
 	}
+
+	return d.writeState(next)
+}
+
+// checksum — отпечаток содержимого файла.
+func checksum(body []byte) string {
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
+}
+
+// write кладёт файл через временный: половина файла на диске означала бы
+// шаблон, который не читается, вместо прежнего рабочего.
+func write(path string, body []byte) error {
+	tmp := path + ".new"
+	if err := os.WriteFile(tmp, body, 0o644); err != nil {
+		return fmt.Errorf("devtmpl: запись %s: %w", path, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("devtmpl: замена %s: %w", path, err)
+	}
 	return nil
+}
+
+// readState читает отпечатки. Битый файл — не повод не запускаться: худшее,
+// что случится, это неподтянутое исправление.
+func (d *Dir) readState() map[string]string {
+	body, err := os.ReadFile(filepath.Join(d.path, stateFile))
+	if err != nil {
+		return nil
+	}
+	var state map[string]string
+	if err := json.Unmarshal(body, &state); err != nil {
+		return nil
+	}
+	return state
+}
+
+func (d *Dir) writeState(state map[string]string) error {
+	body, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("devtmpl: отпечатки: %w", err)
+	}
+	return write(filepath.Join(d.path, stateFile), append(body, '\n'))
 }
 
 // Item — шаблон вместе со сведениями о файле.
@@ -94,7 +209,10 @@ func (d *Dir) List() ([]Item, error) {
 
 	out := make([]Item, 0, len(entries))
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ext) {
+		// Точка в начале — служебное: отпечатки раскладки, следы
+		// редакторов. Профилем такое показывать незачем.
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ext) ||
+			strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 		key := strings.TrimSuffix(e.Name(), ext)
@@ -165,13 +283,7 @@ func (d *Dir) Save(key string, body []byte) error {
 		return err
 	}
 
-	// Пишем рядом и переименовываем: половина файла на диске означала бы
-	// шаблон, который не читается, вместо прежнего рабочего.
-	tmp := path + ".new"
-	if err := os.WriteFile(tmp, body, 0o644); err != nil {
-		return fmt.Errorf("devtmpl: запись %s: %w", path, err)
-	}
-	return os.Rename(tmp, path)
+	return write(path, body)
 }
 
 // Delete удаляет шаблон. Поставляемый вернётся при следующем запуске: он едет

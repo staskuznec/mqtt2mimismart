@@ -101,6 +101,24 @@ func run() error {
 		"profiles", dir.Path(),
 		"addr", *addr)
 
+	// После обновления это единственное место, где видно, что стало с
+	// профилями: какие приехали впервые, в каких подтянулось исправление и
+	// какие остались с правками — их исправление обошло стороной.
+	if s := dir.Seeded(); len(s.Added)+len(s.Updated) > 0 {
+		log.Info("профили устройств разложены",
+			"добавлено", len(s.Added),
+			"обновлено", len(s.Updated),
+			"оставлено с правками", len(s.Kept))
+		for _, key := range s.Updated {
+			log.Info("профиль обновлён из поставки", "профиль", key)
+		}
+	}
+	for _, key := range dir.Seeded().Stale {
+		log.Warn("профиль правлен вручную, исправление из поставки не применено",
+			"профиль", key,
+			"hint", "удалите файл, чтобы взять поставляемый заново")
+	}
+
 	a, err := app.New(log, ring, db, version, *addr, *basePath)
 	if err != nil {
 		return err
