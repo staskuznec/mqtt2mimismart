@@ -1,0 +1,292 @@
+{
+  "name": "Shelly Plus 2PM — режим реле",
+  "model": "SNSW-002P16EU",
+  "note": "Два независимых канала с измерением. Если устройство переведено в режим ролеты, топики switch:* пропадают вовсе — берите профиль «Shelly Plus 2PM — режим ролеты». Профиль подходит и для Pro 2PM. В настройках устройства → MQTT включите «Generic status update over MQTT» (status_ntf), иначе оно не публикует состояние вовсе и связки останутся пустыми. Префикс топика по умолчанию — идентификатор устройства, например shellyplus1pm-a8032abd1eb4.",
+  "roles": [
+    {
+      "key": "ch0",
+      "title": "Канал 0",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ],
+      "required": true
+    },
+    {
+      "key": "power0",
+      "title": "Мощность канала 0, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "energy0",
+      "title": "Энергия канала 0, кВт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "ch1",
+      "title": "Канал 1",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ],
+      "required": false
+    },
+    {
+      "key": "power1",
+      "title": "Мощность канала 1, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "energy1",
+      "title": "Энергия канала 1, кВт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "voltage",
+      "title": "Напряжение сети, В",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "current",
+      "title": "Ток, А",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "temp",
+      "title": "Температура устройства, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "in0",
+      "title": "Вход 0",
+      "form": "byte",
+      "types": [
+        "switch",
+        "door-sensor",
+        "script",
+        "lamp"
+      ]
+    },
+    {
+      "key": "in1",
+      "title": "Вход 1",
+      "form": "byte",
+      "types": [
+        "switch",
+        "door-sensor",
+        "script",
+        "lamp"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "по завещанию брокеру: пропало питание — элемент погаснет"
+    }
+  ],
+  "links": [
+    {
+      "name": "Канал 0 — состояние",
+      "direction": "in",
+      "role": "ch0",
+      "pair": "ch0",
+      "topic": "{{prefix}}/status/switch:0",
+      "extract": "json",
+      "extract_path": "output",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    },
+    {
+      "name": "Канал 0 — команда",
+      "direction": "out",
+      "role": "ch0",
+      "pair": "ch0",
+      "topic": "{{prefix}}/rpc",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "{\"id\":1,\"src\":\"mqtt2mimismart\",\"method\":\"Switch.Set\",\"params\":{\"id\":0,\"on\":true}}",
+        "off": "{\"id\":1,\"src\":\"mqtt2mimismart\",\"method\":\"Switch.Set\",\"params\":{\"id\":0,\"on\":false}}",
+        "toggle": "{\"id\":1,\"src\":\"mqtt2mimismart\",\"method\":\"Switch.Toggle\",\"params\":{\"id\":0}}"
+      }
+    },
+    {
+      "name": "Мощность канала 0",
+      "direction": "in",
+      "role": "power0",
+      "topic": "{{prefix}}/status/switch:0",
+      "extract": "json",
+      "extract_path": "apower",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Энергия канала 0",
+      "direction": "in",
+      "role": "energy0",
+      "topic": "{{prefix}}/status/switch:0",
+      "extract": "json",
+      "extract_path": "aenergy.total",
+      "encode": "text",
+      "unit": " кВт",
+      "precision": 1,
+      "scale": 0.001
+    },
+    {
+      "name": "Канал 1 — состояние",
+      "direction": "in",
+      "role": "ch1",
+      "pair": "ch1",
+      "topic": "{{prefix}}/status/switch:1",
+      "extract": "json",
+      "extract_path": "output",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    },
+    {
+      "name": "Канал 1 — команда",
+      "direction": "out",
+      "role": "ch1",
+      "pair": "ch1",
+      "topic": "{{prefix}}/rpc",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "{\"id\":1,\"src\":\"mqtt2mimismart\",\"method\":\"Switch.Set\",\"params\":{\"id\":1,\"on\":true}}",
+        "off": "{\"id\":1,\"src\":\"mqtt2mimismart\",\"method\":\"Switch.Set\",\"params\":{\"id\":1,\"on\":false}}",
+        "toggle": "{\"id\":1,\"src\":\"mqtt2mimismart\",\"method\":\"Switch.Toggle\",\"params\":{\"id\":1}}"
+      }
+    },
+    {
+      "name": "Мощность канала 1",
+      "direction": "in",
+      "role": "power1",
+      "topic": "{{prefix}}/status/switch:1",
+      "extract": "json",
+      "extract_path": "apower",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Энергия канала 1",
+      "direction": "in",
+      "role": "energy1",
+      "topic": "{{prefix}}/status/switch:1",
+      "extract": "json",
+      "extract_path": "aenergy.total",
+      "encode": "text",
+      "unit": " кВт",
+      "precision": 1,
+      "scale": 0.001
+    },
+    {
+      "name": "Напряжение сети",
+      "direction": "in",
+      "role": "voltage",
+      "topic": "{{prefix}}/status/switch:0",
+      "extract": "json",
+      "extract_path": "voltage",
+      "encode": "text",
+      "unit": " В",
+      "precision": 0
+    },
+    {
+      "name": "Ток",
+      "direction": "in",
+      "role": "current",
+      "topic": "{{prefix}}/status/switch:0",
+      "extract": "json",
+      "extract_path": "current",
+      "encode": "text",
+      "unit": " А",
+      "precision": 2
+    },
+    {
+      "name": "Температура устройства",
+      "direction": "in",
+      "role": "temp",
+      "topic": "{{prefix}}/status/switch:0",
+      "extract": "json",
+      "extract_path": "temperature.tC",
+      "encode": "sensor"
+    },
+    {
+      "name": "Вход 0",
+      "direction": "in",
+      "role": "in0",
+      "topic": "{{prefix}}/status/input:0",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    },
+    {
+      "name": "Вход 1",
+      "direction": "in",
+      "role": "in1",
+      "topic": "{{prefix}}/status/input:1",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/online",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    }
+  ]
+}

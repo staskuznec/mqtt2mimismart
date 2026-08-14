@@ -1,0 +1,228 @@
+{
+  "name": "Shelly Plus 2PM — режим ролеты",
+  "model": "SNSW-002P16EU",
+  "note": "Шторы, ворота, маркиза. В режиме ролеты устройство не публикует switch:* вовсе — только cover:0. Команда приводу уходит на открыть и закрыть; промежуточное положение отправить нельзя, таблица значений сопоставляет значения по одному. В настройках устройства → MQTT включите «Generic status update over MQTT» (status_ntf), иначе оно не публикует состояние вовсе и связки останутся пустыми. Префикс топика по умолчанию — идентификатор устройства, например shellyplus1pm-a8032abd1eb4.",
+  "roles": [
+    {
+      "key": "roller",
+      "title": "Привод — положение и управление",
+      "form": "byte",
+      "types": [
+        "curtain",
+        "gate"
+      ],
+      "required": true,
+      "hint": "элемент штор: положение 0–100 помещается в один байт"
+    },
+    {
+      "key": "state",
+      "title": "Состояние привода",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "open, closed, opening, closing, stopped или calibrating"
+    },
+    {
+      "key": "power",
+      "title": "Мощность, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "energy",
+      "title": "Энергия, кВт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "voltage",
+      "title": "Напряжение сети, В",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "current",
+      "title": "Ток, А",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "temp",
+      "title": "Температура устройства, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "in0",
+      "title": "Вход 0",
+      "form": "byte",
+      "types": [
+        "switch",
+        "door-sensor",
+        "script",
+        "lamp"
+      ]
+    },
+    {
+      "key": "in1",
+      "title": "Вход 1",
+      "form": "byte",
+      "types": [
+        "switch",
+        "door-sensor",
+        "script",
+        "lamp"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "по завещанию брокеру: пропало питание — элемент погаснет"
+    }
+  ],
+  "links": [
+    {
+      "name": "Положение привода",
+      "direction": "in",
+      "role": "roller",
+      "pair": "roller",
+      "topic": "{{prefix}}/status/cover:0",
+      "extract": "json",
+      "extract_path": "current_pos",
+      "encode": "byte"
+    },
+    {
+      "name": "Команда приводу",
+      "direction": "out",
+      "role": "roller",
+      "pair": "roller",
+      "topic": "{{prefix}}/rpc",
+      "kind": "command",
+      "decode": "byte",
+      "qos": 1,
+      "values": {
+        "0": "{\"id\":1,\"src\":\"mqtt2mimismart\",\"method\":\"Cover.Close\",\"params\":{\"id\":0}}",
+        "100": "{\"id\":1,\"src\":\"mqtt2mimismart\",\"method\":\"Cover.Open\",\"params\":{\"id\":0}}"
+      }
+    },
+    {
+      "name": "Состояние привода",
+      "direction": "in",
+      "role": "state",
+      "topic": "{{prefix}}/status/cover:0",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "text"
+    },
+    {
+      "name": "Мощность",
+      "direction": "in",
+      "role": "power",
+      "topic": "{{prefix}}/status/cover:0",
+      "extract": "json",
+      "extract_path": "apower",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Энергия",
+      "direction": "in",
+      "role": "energy",
+      "topic": "{{prefix}}/status/cover:0",
+      "extract": "json",
+      "extract_path": "aenergy.total",
+      "encode": "text",
+      "unit": " кВт",
+      "precision": 1,
+      "scale": 0.001
+    },
+    {
+      "name": "Напряжение сети",
+      "direction": "in",
+      "role": "voltage",
+      "topic": "{{prefix}}/status/cover:0",
+      "extract": "json",
+      "extract_path": "voltage",
+      "encode": "text",
+      "unit": " В",
+      "precision": 0
+    },
+    {
+      "name": "Ток",
+      "direction": "in",
+      "role": "current",
+      "topic": "{{prefix}}/status/cover:0",
+      "extract": "json",
+      "extract_path": "current",
+      "encode": "text",
+      "unit": " А",
+      "precision": 2
+    },
+    {
+      "name": "Температура устройства",
+      "direction": "in",
+      "role": "temp",
+      "topic": "{{prefix}}/status/cover:0",
+      "extract": "json",
+      "extract_path": "temperature.tC",
+      "encode": "sensor"
+    },
+    {
+      "name": "Вход 0",
+      "direction": "in",
+      "role": "in0",
+      "topic": "{{prefix}}/status/input:0",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    },
+    {
+      "name": "Вход 1",
+      "direction": "in",
+      "role": "in1",
+      "topic": "{{prefix}}/status/input:1",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/online",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    }
+  ]
+}

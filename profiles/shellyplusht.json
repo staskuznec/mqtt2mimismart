@@ -1,0 +1,67 @@
+{
+  "name": "Shelly Plus H&T — температура и влажность",
+  "model": "SNSN-0013A",
+  "note": "Датчик на батарейках: просыпается, публикует и снова засыпает, поэтому значения приходят редко и «на связи» держать смысла нет. В настройках устройства → MQTT включите «Generic status update over MQTT» (status_ntf), иначе оно не публикует состояние вовсе и связки останутся пустыми. Префикс топика по умолчанию — идентификатор устройства, например shellyplus1pm-a8032abd1eb4.",
+  "roles": [
+    {
+      "key": "temp",
+      "title": "Температура, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ],
+      "required": true
+    },
+    {
+      "key": "hum",
+      "title": "Влажность, %",
+      "form": "sensor",
+      "types": [
+        "humidity-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "battery",
+      "title": "Заряд батареи, %",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    }
+  ],
+  "links": [
+    {
+      "name": "Температура",
+      "direction": "in",
+      "role": "temp",
+      "topic": "{{prefix}}/status/temperature:0",
+      "extract": "json",
+      "extract_path": "tC",
+      "encode": "sensor"
+    },
+    {
+      "name": "Влажность",
+      "direction": "in",
+      "role": "hum",
+      "topic": "{{prefix}}/status/humidity:0",
+      "extract": "json",
+      "extract_path": "rh",
+      "encode": "sensor"
+    },
+    {
+      "name": "Заряд батареи",
+      "direction": "in",
+      "role": "battery",
+      "topic": "{{prefix}}/status/devicepower:0",
+      "extract": "json",
+      "extract_path": "battery.percent",
+      "encode": "text",
+      "unit": " %",
+      "precision": 0
+    }
+  ]
+}

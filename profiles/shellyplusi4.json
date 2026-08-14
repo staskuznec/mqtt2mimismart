@@ -1,0 +1,128 @@
+{
+  "name": "Shelly Plus i4 — четыре входа",
+  "model": "SNSN-0024X",
+  "note": "Только входы, реле нет. Кнопки и выключатели — состояние приходит как true или false. В настройках устройства → MQTT включите «Generic status update over MQTT» (status_ntf), иначе оно не публикует состояние вовсе и связки останутся пустыми. Префикс топика по умолчанию — идентификатор устройства, например shellyplus1pm-a8032abd1eb4.",
+  "roles": [
+    {
+      "key": "in0",
+      "title": "Вход 0",
+      "form": "byte",
+      "types": [
+        "switch",
+        "door-sensor",
+        "script",
+        "lamp"
+      ],
+      "required": true
+    },
+    {
+      "key": "in1",
+      "title": "Вход 1",
+      "form": "byte",
+      "types": [
+        "switch",
+        "door-sensor",
+        "script",
+        "lamp"
+      ]
+    },
+    {
+      "key": "in2",
+      "title": "Вход 2",
+      "form": "byte",
+      "types": [
+        "switch",
+        "door-sensor",
+        "script",
+        "lamp"
+      ]
+    },
+    {
+      "key": "in3",
+      "title": "Вход 3",
+      "form": "byte",
+      "types": [
+        "switch",
+        "door-sensor",
+        "script",
+        "lamp"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "по завещанию брокеру: пропало питание — элемент погаснет"
+    }
+  ],
+  "links": [
+    {
+      "name": "Вход 0",
+      "direction": "in",
+      "role": "in0",
+      "topic": "{{prefix}}/status/input:0",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    },
+    {
+      "name": "Вход 1",
+      "direction": "in",
+      "role": "in1",
+      "topic": "{{prefix}}/status/input:1",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    },
+    {
+      "name": "Вход 2",
+      "direction": "in",
+      "role": "in2",
+      "topic": "{{prefix}}/status/input:2",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    },
+    {
+      "name": "Вход 3",
+      "direction": "in",
+      "role": "in3",
+      "topic": "{{prefix}}/status/input:3",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/online",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    }
+  ]
+}

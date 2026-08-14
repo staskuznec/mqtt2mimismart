@@ -1,0 +1,190 @@
+{
+  "name": "Shelly Plus 1PM — реле с измерением",
+  "model": "SNSW-001P16EU",
+  "note": "Один канал с измерением мощности, тока, напряжения и энергии. Профиль подходит и для Shelly Pro 1PM. В настройках устройства → MQTT включите «Generic status update over MQTT» (status_ntf), иначе оно не публикует состояние вовсе и связки останутся пустыми. Префикс топика по умолчанию — идентификатор устройства, например shellyplus1pm-a8032abd1eb4.",
+  "roles": [
+    {
+      "key": "ch0",
+      "title": "Канал",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "script"
+      ],
+      "required": true
+    },
+    {
+      "key": "power0",
+      "title": "Мощность канала 0, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "energy0",
+      "title": "Энергия канала 0, кВт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "voltage",
+      "title": "Напряжение сети, В",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "current",
+      "title": "Ток, А",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "temp",
+      "title": "Температура устройства, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "in0",
+      "title": "Вход 0",
+      "form": "byte",
+      "types": [
+        "switch",
+        "door-sensor",
+        "script",
+        "lamp"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "по завещанию брокеру: пропало питание — элемент погаснет"
+    }
+  ],
+  "links": [
+    {
+      "name": "Канал — состояние",
+      "direction": "in",
+      "role": "ch0",
+      "pair": "ch0",
+      "topic": "{{prefix}}/status/switch:0",
+      "extract": "json",
+      "extract_path": "output",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    },
+    {
+      "name": "Канал — команда",
+      "direction": "out",
+      "role": "ch0",
+      "pair": "ch0",
+      "topic": "{{prefix}}/rpc",
+      "kind": "command",
+      "decode": "lamp",
+      "qos": 1,
+      "values": {
+        "on": "{\"id\":1,\"src\":\"mqtt2mimismart\",\"method\":\"Switch.Set\",\"params\":{\"id\":0,\"on\":true}}",
+        "off": "{\"id\":1,\"src\":\"mqtt2mimismart\",\"method\":\"Switch.Set\",\"params\":{\"id\":0,\"on\":false}}",
+        "toggle": "{\"id\":1,\"src\":\"mqtt2mimismart\",\"method\":\"Switch.Toggle\",\"params\":{\"id\":0}}"
+      }
+    },
+    {
+      "name": "Мощность канала 0",
+      "direction": "in",
+      "role": "power0",
+      "topic": "{{prefix}}/status/switch:0",
+      "extract": "json",
+      "extract_path": "apower",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Энергия канала 0",
+      "direction": "in",
+      "role": "energy0",
+      "topic": "{{prefix}}/status/switch:0",
+      "extract": "json",
+      "extract_path": "aenergy.total",
+      "encode": "text",
+      "unit": " кВт",
+      "precision": 1,
+      "scale": 0.001
+    },
+    {
+      "name": "Напряжение сети",
+      "direction": "in",
+      "role": "voltage",
+      "topic": "{{prefix}}/status/switch:0",
+      "extract": "json",
+      "extract_path": "voltage",
+      "encode": "text",
+      "unit": " В",
+      "precision": 0
+    },
+    {
+      "name": "Ток",
+      "direction": "in",
+      "role": "current",
+      "topic": "{{prefix}}/status/switch:0",
+      "extract": "json",
+      "extract_path": "current",
+      "encode": "text",
+      "unit": " А",
+      "precision": 2
+    },
+    {
+      "name": "Температура устройства",
+      "direction": "in",
+      "role": "temp",
+      "topic": "{{prefix}}/status/switch:0",
+      "extract": "json",
+      "extract_path": "temperature.tC",
+      "encode": "sensor"
+    },
+    {
+      "name": "Вход 0",
+      "direction": "in",
+      "role": "in0",
+      "topic": "{{prefix}}/status/input:0",
+      "extract": "json",
+      "extract_path": "state",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/online",
+      "encode": "byte",
+      "values": {
+        "true": "1",
+        "false": "0"
+      }
+    }
+  ]
+}
