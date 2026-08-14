@@ -19,6 +19,10 @@
  * Чужой applyState переписывать нельзя, поэтому вкладка держится сама:
  * возвращается на своё место, если её снесли, и помнит, была ли она открыта.
  *
+ * Отдельная история — порядок разделов. Панель хранит его в cookie, картой
+ * «идентификатор вкладки → место», и подчищать эту карту приходится нам:
+ * подробности у dropTab и remember.
+ *
  * Подключается строкой в index.php панели, после app.js:
  *   <script src="mqtt-tab.js"></script>
  */
@@ -104,11 +108,55 @@
         if (!tab) {
             return;
         }
+        var index = center.items.indexOf(tab);
+        if (index < 0) {
+            // Вкладка уже вынута из панели: места у неё сейчас нет, и записать
+            // «-1» значило бы потерять запомненное — при следующей загрузке
+            // вкладка встала бы в конец списка.
+            return;
+        }
         var active = center.getActiveTab();
         saveState({
-            index: center.items.indexOf(tab),
+            index: index,
             active: !!(active && active.id === TAB_ID)
         });
+    }
+
+    // dropTab возвращает состояние панели без нашей вкладки.
+    //
+    // Панель кладёт в cookie карту «идентификатор вкладки → место» и при
+    // загрузке пересобирает по ней разделы — но только если число вкладок в
+    // панели совпадает с числом записей в карте. Наша вкладка в карту попадает
+    // (она стоит в том же контейнере), а при загрузке её ещё нет: числа
+    // расходятся, панель молча пропускает сборку и оставляет разделы в порядке
+    // по умолчанию. Поэтому в cookie уходит карта без нас — иначе наша вкладка
+    // ломает перестановку всех остальных разделов.
+    function dropTab(center, state) {
+        var tab = Ext.getCmp(TAB_ID);
+        var at = tab ? center.items.indexOf(tab) : -1;
+        if (at < 0 || !state) {
+            return null; // нашей вкладки в панели нет, чистить нечего
+        }
+
+        var clean = Ext.apply({}, state);
+        if (state.tabsMap) {
+            var map = {};
+            var next = 0;
+            for (var id in state.tabsMap) {
+                if (state.tabsMap.hasOwnProperty(id) && id !== TAB_ID) {
+                    map[id] = next++;
+                }
+            }
+            clean.tabsMap = map; // копия: у панели тут живая карта контейнера
+        }
+
+        // Открытый раздел панель запоминает номером. Без нашей вкладки номера
+        // правее неё сдвигаются на один; а если открыта она сама — отдаём
+        // соседний раздел, свою вкладку мы откроем сами, по своей записи.
+        if (typeof clean.activeTab === "number" && clean.activeTab >= at) {
+            clean.activeTab = Math.max(clean.activeTab - 1, 0);
+        }
+        return clean;
     }
 
     function attach(center) {
@@ -117,10 +165,21 @@
         }
         center.mqttWatched = true;
 
-        // Переключение вкладок и перетаскивание меняют и место, и признак
-        // открытости — оба события ловятся здесь.
+        // Переключение вкладок меняет признак открытости — ловится здесь.
         center.on("tabchange", function () { remember(center); });
         center.on("add", function () { remember(center); });
+
+        // Перетаскивание вкладок никаких событий контейнеру не приносит:
+        // порядок меняется вызовом move, а tabchange к этому моменту уже
+        // прошёл — со старым местом. Зато панель сохраняет состояние сразу
+        // после перестановки, и вот тут место уже новое.
+        center.on("statesave", function (panel, state) {
+            var clean = dropTab(center, state);
+            if (clean) {
+                Ext.state.Manager.set(panel.getStateId(), clean);
+            }
+            remember(center);
+        });
     }
 
     function ensureTab() {
@@ -130,10 +189,22 @@
         }
 
         attach(center);
-        if (!Ext.getCmp(TAB_ID)) {
+        if (Ext.getCmp(TAB_ID)) {
+            remember(center);
+        } else {
             place(center);
         }
         return true;
+    }
+
+    // Панель сохраняет состояние с задержкой в пару секунд, и обновление
+    // страницы сразу после перетаскивания её опережает. Место снимается ещё и
+    // здесь: запись в localStorage синхронная и уйти со страницы не мешает.
+    function rememberOnLeave() {
+        var center = Ext.getCmp("centerPanel");
+        if (center && center.items) {
+            remember(center);
+        }
     }
 
     function start() {
@@ -149,6 +220,9 @@
             setTimeout(tick, found ? WATCH_EVERY : CHECK_EVERY);
         }
         tick();
+
+        window.addEventListener("pagehide", rememberOnLeave);
+        window.addEventListener("beforeunload", rememberOnLeave);
     }
 
     if (typeof Ext === "undefined") {
