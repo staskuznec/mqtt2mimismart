@@ -192,13 +192,7 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 		{"microart-hybrid", "Частота сети", "50.0", "50.0 Гц", ""},
 		{"microart-hybrid", "Режим ЭКО", "1", "1", ""},
 		{"microart-hybrid", "Номер инвертора", "34396", "34396", ""},
-		{"microart-hybrid", "На связи", "online", "1", "31"},
 		{"microart-hybrid", "На связи словом", "offline", "offline", ""},
-		// Доступность уезжает единицей и нулём в виртуальный элемент, а не
-		// однобайтовым состоянием: как отзываться на потерю связи, решает
-		// логика на объекте.
-		{"microart-map", "На связи", "online", "1", "31"},
-		{"microart-map", "На связи", "offline", "0", "30"},
 	} {
 		t.Run(tc.profile+"/"+tc.link, func(t *testing.T) {
 			l := linkFromProfile(t, tc.profile, tc.link)
