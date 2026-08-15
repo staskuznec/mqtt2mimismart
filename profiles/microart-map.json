@@ -1,0 +1,254 @@
+{
+  "name": "МикроАрт МАП — инвертор",
+  "model": "microart map",
+  "note": "Инвертор МАП с агентом на «Малине»: тот публикует каждое поле API отдельным топиком с retain, поэтому разбирать JSON не нужно и связки читают значение целиком. В поле «префикс топиков» укажите корень инвертора из настроек агента, например microart/inv1 — без завершающего слэша. Второй инвертор заводится тем же профилем с корнем microart/inv2. Все связки только на вход: управлять МАП по шине агент не даёт. Напряжение и температура АКБ уезжают показанием датчика — так сохраняются десятые доли; ниже нуля протокол показаний не передаёт, для холодного помещения берите текстовый элемент. Ток АКБ и мощность по сети приходят со знаком, поэтому идут текстом. Мгновенные величины (солнце, температура) агент берёт из секундных данных, остальное — из минутных: заряд и остаточная ёмкость обновляются раз в минуту, а раз в republish_sec весь набор публикуется заново. Контроллеров КЭС бывает до четырёх — здесь описан нулевой; для остальных скопируйте связку, поменяв mppt/0 на mppt/1 и далее.",
+  "roles": [
+    {
+      "key": "soc",
+      "title": "Заряд АКБ, %",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "required": true
+    },
+    {
+      "key": "ubat",
+      "title": "Напряжение АКБ, В",
+      "form": "sensor",
+      "types": [
+        "float-sensor",
+        "virtual"
+      ],
+      "hint": "среднее за минуту, показанием датчика — с десятыми"
+    },
+    {
+      "key": "ibat",
+      "title": "Ток АКБ, А",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "со знаком: плюс — заряд, минус — разряд"
+    },
+    {
+      "key": "cap",
+      "title": "Остаточная ёмкость, А·ч",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "tbat",
+      "title": "Температура АКБ, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "sun",
+      "title": "Мощность от солнца, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "сумма по всем контроллерам КЭС"
+    },
+    {
+      "key": "sunday",
+      "title": "Выработка солнца за сутки, кВт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "unet",
+      "title": "Напряжение сети, В",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "pnet",
+      "title": "Мощность по сети, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "со знаком: минус — отдача в сеть"
+    },
+    {
+      "key": "pload",
+      "title": "Мощность нагрузки, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "mode",
+      "title": "Режим МАП",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "приходит словом, а не числом — элементу нужна текстовая форма"
+    },
+    {
+      "key": "status",
+      "title": "Статус работы МАП",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "mppt0",
+      "title": "Мощность контроллера 1, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "online",
+      "title": "Инвертор на связи",
+      "form": "byte",
+      "types": [
+        "lamp",
+        "door-sensor",
+        "script"
+      ],
+      "hint": "по завещанию брокеру: пропала «Малина» — элемент погаснет"
+    }
+  ],
+  "links": [
+    {
+      "name": "Заряд АКБ",
+      "direction": "in",
+      "role": "soc",
+      "topic": "{{prefix}}/bat/0/C_100_remain",
+      "encode": "text",
+      "unit": " %",
+      "precision": 0
+    },
+    {
+      "name": "Напряжение АКБ",
+      "direction": "in",
+      "role": "ubat",
+      "topic": "{{prefix}}/bat/0/Uacc_avg",
+      "encode": "sensor"
+    },
+    {
+      "name": "Ток АКБ",
+      "direction": "in",
+      "role": "ibat",
+      "topic": "{{prefix}}/bat/0/Iavg",
+      "encode": "text",
+      "unit": " А",
+      "precision": 2
+    },
+    {
+      "name": "Остаточная ёмкость",
+      "direction": "in",
+      "role": "cap",
+      "topic": "{{prefix}}/bat/0/C_Ah_remain",
+      "encode": "text",
+      "unit": " А·ч",
+      "precision": 0
+    },
+    {
+      "name": "Температура АКБ",
+      "direction": "in",
+      "role": "tbat",
+      "topic": "{{prefix}}/bat/1/t_bat",
+      "encode": "sensor"
+    },
+    {
+      "name": "Мощность от солнца",
+      "direction": "in",
+      "role": "sun",
+      "topic": "{{prefix}}/bat/1/Sun_P",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Выработка солнца за сутки",
+      "direction": "in",
+      "role": "sunday",
+      "topic": "{{prefix}}/bat/0/mppt_day_E",
+      "encode": "text",
+      "scale": 0.001,
+      "unit": " кВт",
+      "precision": 1
+    },
+    {
+      "name": "Напряжение сети",
+      "direction": "in",
+      "role": "unet",
+      "topic": "{{prefix}}/map/_UNET",
+      "encode": "text",
+      "unit": " В",
+      "precision": 0
+    },
+    {
+      "name": "Мощность по сети",
+      "direction": "in",
+      "role": "pnet",
+      "topic": "{{prefix}}/map/_PNET",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Мощность нагрузки",
+      "direction": "in",
+      "role": "pload",
+      "topic": "{{prefix}}/map/_PLoad",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Режим МАП",
+      "direction": "in",
+      "role": "mode",
+      "topic": "{{prefix}}/map/_MODE",
+      "encode": "text"
+    },
+    {
+      "name": "Статус работы МАП",
+      "direction": "in",
+      "role": "status",
+      "topic": "{{prefix}}/map/_Status_Char",
+      "encode": "text"
+    },
+    {
+      "name": "Мощность контроллера 1",
+      "direction": "in",
+      "role": "mppt0",
+      "topic": "{{prefix}}/mppt/0/P_PV",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/availability",
+      "encode": "byte",
+      "values": {
+        "online": "1",
+        "offline": "0"
+      }
+    }
+  ]
+}
