@@ -190,7 +190,7 @@ func (a *App) linkStats() map[int64]link.Stats {
 // ради изменённой связки было бы дико, а держать связки в двух местах — базе
 // и памяти движка — значит однажды их рассинхронизировать.
 func (a *App) ReloadLinks(ctx context.Context) error {
-	_, _, engine := a.clients()
+	_, mqttClient, engine := a.clients()
 	if engine == nil {
 		return nil
 	}
@@ -200,6 +200,20 @@ func (a *App) ReloadLinks(ctx context.Context) error {
 		return err
 	}
 	engine.SetLinks(links)
+
+	// Повторная подписка на ту же маску заставляет брокер прислать заново всё,
+	// что лежит у него с retain.
+	//
+	// Без этого только что заведённая связка стоит пустой до следующей
+	// публикации: сохранённые значения брокер отдаёт один раз, в момент
+	// подписки, — то есть до того, как связку завели. У редких топиков это
+	// заметно особенно: доступность инвертора или его серийный номер меняются
+	// раз в жизни, и ждать пришлось бы до ближайшего переиздания.
+	if mqttClient != nil {
+		if err := mqttClient.Subscribe(mqtt.LearningFilter, 0); err != nil {
+			a.log.Error("запрос сохранённых значений", "err", err)
+		}
+	}
 
 	enabled := 0
 	for _, l := range links {
