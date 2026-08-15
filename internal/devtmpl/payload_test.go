@@ -164,6 +164,16 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 		{"microart-map", "Напряжение на выходе", "221", "221 В", ""},
 		{"microart-map", "Ёмкость АКБ C20", "200.0", "200 А·ч", ""},
 		{"microart-map", "Температура МАП, датчик 3", "27", "27", "00 1b"},
+		// Заряд и доступность идут дважды: текстом на экран и показанием в
+		// логику. Элемент умного дома бывает и таким, и таким.
+		{"microart-map", "Заряд АКБ показанием", "86.3", "86.3", "4c 56"},
+		{"microart-map", "На связи показанием", "online", "1", "00 01"},
+		{"microart-map", "На связи показанием", "offline", "0", "00 00"},
+		// Ток заряда и ток разряда — один топик, разный знак множителя.
+		// Каждый показывает свою половину, чужую обрезает в ноль, и сценарий
+		// отличает заряд от разряда сравнением, а не арифметикой.
+		{"microart-map", "Ток заряда АКБ", "12.5", "12.5", "80 0c"},
+		{"microart-map", "Ток разряда АКБ", "-12.5", "12.5", "80 0c"},
 		// Доступность уезжает единицей и нулём в виртуальный элемент, а не
 		// однобайтовым состоянием: как отзываться на потерю связи, решает
 		// логика на объекте.
@@ -185,6 +195,44 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 			}
 			if wire.Clamped {
 				t.Errorf("значение обрезано под диапазон протокола")
+			}
+		})
+	}
+}
+
+// Ток АКБ у МАП один и приходит со знаком, а показание датчика знака не имеет.
+// Профиль делит его на две величины: заряд и разряд, каждая своей связкой с
+// обратным множителем. Половина, которой сейчас нет, обязана быть ровно нулём —
+// иначе сценарий «заряжается» срабатывал бы и при разряде.
+func TestMicroartSplitsChargeAndDischarge(t *testing.T) {
+	charge := linkFromProfile(t, "microart-map", "Ток заряда АКБ")
+	discharge := linkFromProfile(t, "microart-map", "Ток разряда АКБ")
+
+	for _, tc := range []struct {
+		payload string
+		charge  string
+		dischg  string
+	}{
+		{"12.50", "12.5", "0"},
+		{"-12.50", "0", "12.5"},
+		{"0.00", "0", "0"},
+	} {
+		t.Run(tc.payload, func(t *testing.T) {
+			for _, side := range []struct {
+				name string
+				link link.Link
+				want string
+			}{
+				{"заряд", charge, tc.charge},
+				{"разряд", discharge, tc.dischg},
+			} {
+				wire, err := side.link.ToWire([]byte(tc.payload))
+				if err != nil {
+					t.Fatalf("%s: ToWire: %v", side.name, err)
+				}
+				if wire.Text != side.want {
+					t.Errorf("%s = %q, ожидалось %q", side.name, wire.Text, side.want)
+				}
 			}
 		})
 	}
