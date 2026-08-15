@@ -232,9 +232,18 @@ type topicsData struct {
 
 // topicGroup — топики одного устройства, собранные по мастер-топику.
 type topicGroup struct {
-	Prefix string
-	Topics []topicRow
+	Prefix    string
+	Topics    []topicRow
+	Collapsed bool // группа свёрнута: раскрывается щелчком по заголовку
 }
+
+// bigGroup — с какого числа топиков группа приезжает свёрнутой.
+//
+// Инвертор МикроАрт публикует полторы сотни топиков на одно устройство, и
+// рядом с ним таблицы остальных устройств просто не видно: страница
+// превращается в портянку, по которой ищут прокруткой. Мелкие группы
+// сворачивать незачем — там разворачивать было бы больше работы, чем читать.
+const bigGroup = 12
 
 type topicRow struct {
 	Topic     string
@@ -279,7 +288,11 @@ func (s *server) pageTopics(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	for _, prefix := range order {
-		data.Groups = append(data.Groups, topicGroup{Prefix: prefix, Topics: groups[prefix]})
+		data.Groups = append(data.Groups, topicGroup{
+			Prefix:    prefix,
+			Topics:    groups[prefix],
+			Collapsed: len(groups[prefix]) > bigGroup,
+		})
 	}
 	s.render(w, "topics", data)
 }

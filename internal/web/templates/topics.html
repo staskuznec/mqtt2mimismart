@@ -5,10 +5,14 @@
   устройство — одна таблица. Известно топиков: <span id="total">{{.Total}}</span>{{if .Overflow}},
   не запомнено ещё {{.Overflow}} — предел снифера{{end}}.
   Значения обновляются сами; новые топики появятся после обновления страницы.
+  Устройство с десятками топиков приезжает свёрнутым — разворачивается щелчком
+  по заголовку, и страница помнит, что вы открыли. Длинное значение показано
+  началом: щёлкните по нему, чтобы увидеть целиком.
 </p>
 
 {{range .Groups}}
-  <h2><span class="mono">{{.Prefix}}</span></h2>
+  <details class="group" data-prefix="{{.Prefix}}"{{if not .Collapsed}} open{{end}}>
+  <summary><span class="mono">{{.Prefix}}</span><span class="badge">{{len .Topics}}</span></summary>
   <div class="tablewrap">
   <table>
     <thead><tr>
@@ -19,7 +23,7 @@
     {{range .Topics}}
       <tr data-topic="{{.Topic}}">
         <td class="mono">{{if .Short}}{{.Short}}{{else}}{{.Topic}}{{end}}</td>
-        <td class="mono" data-field="payload">{{.Payload}}{{if .Truncated}}…{{end}}</td>
+        <td class="mono"><span class="clip" data-field="payload">{{.Payload}}{{if .Truncated}}…{{end}}</span></td>
         <td>{{.Kind}}{{if .Retained}} · retain{{end}}</td>
         <td class="num" data-field="count">{{.Count}}</td>
         <td class="hint" data-field="ago">{{.Ago}}</td>
@@ -29,6 +33,7 @@
     </tbody>
   </table>
   </div>
+  </details>
 {{else}}
 <p class="empty">
   Пока пусто. Либо шлюз не подключён к брокеру — смотрите
@@ -85,6 +90,30 @@
             .then(paint)
             .catch(function () { /* шлюз перезапускается — подождём */ });
     }
+
+    // Открытые группы запоминаем: на объекте с несколькими устройствами
+    // разворачивать своё после каждой перезагрузки надоедает, а свёрнутыми
+    // они приезжают по числу топиков, а не по желанию хозяина.
+    var KEY = "topics.open";
+    var open = {};
+    try { open = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { open = {}; }
+
+    document.querySelectorAll("details[data-prefix]").forEach(function (d) {
+        var saved = open[d.dataset.prefix];
+        if (saved === true || saved === false) { d.open = saved; }
+        d.addEventListener("toggle", function () {
+            open[d.dataset.prefix] = d.open;
+            try { localStorage.setItem(KEY, JSON.stringify(open)); } catch (e) { /* приватный режим */ }
+        });
+    });
+
+    // Разворот значения по щелчку. Обработчик один на всю таблицу: строки
+    // приходят и уходят вместе с топиками, а вешать слушателя на каждую
+    // ячейку заново после каждого опроса незачем.
+    document.addEventListener("click", function (e) {
+        var cell = e.target.closest && e.target.closest(".clip");
+        if (cell) { cell.classList.toggle("open"); }
+    });
 
     setInterval(tick, EVERY);
     tick();

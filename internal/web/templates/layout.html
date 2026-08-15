@@ -79,6 +79,38 @@
 
   code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
 
+  /* Группа-раскладушка. Заголовок работает сам, без скрипта: <details> умеет
+     и щелчок, и клавиатуру. Регистр не меняем — топик чувствителен к нему, и
+     заголовок в верхнем регистре читался бы как другое имя. */
+  details.group { margin: 26px 0 0; }
+  details.group > summary {
+    display: flex; align-items: center; gap: 9px; cursor: pointer;
+    padding: 7px 0; margin-bottom: 10px; color: var(--muted);
+    list-style: none; user-select: none;
+  }
+  details.group > summary::-webkit-details-marker { display: none; }
+  details.group > summary::before { content: "▸"; font-size: 11px; width: 9px; }
+  details.group[open] > summary::before { content: "▾"; }
+  details.group > summary:hover { color: var(--fg); }
+  .badge {
+    padding: 1px 8px; border-radius: 999px;
+    background: var(--line-soft); color: var(--muted); font-size: 12px;
+  }
+
+  /* Длинное значение в ячейке: показываем начало, полное — по щелчку.
+     Инвертор МикроАрт публикует целый раздел API одной строкой, и без обрезки
+     эта строка растягивает столбец на всю ширину, а кнопки соседних строк
+     уезжают за край таблицы. */
+  .clip {
+    display: inline-block; max-width: 48ch; vertical-align: bottom;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    cursor: zoom-in;
+  }
+  .clip.open {
+    max-width: 72ch; white-space: pre-wrap; overflow-wrap: anywhere;
+    cursor: zoom-out;
+  }
+
   /* Состояния */
   .pill {
     display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;

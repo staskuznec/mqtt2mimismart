@@ -1,7 +1,7 @@
 {
   "name": "МикроАрт МАП — инвертор",
   "model": "microart map",
-  "note": "Инвертор МАП с агентом на «Малине»: тот публикует каждое поле API отдельным топиком с retain, поэтому разбирать JSON не нужно и связки читают значение целиком. В поле «префикс топиков» укажите корень инвертора из настроек агента, например microart/inv1 — без завершающего слэша. Второй инвертор заводится тем же профилем с корнем microart/inv2. Все связки только на вход: управлять МАП по шине агент не даёт. Напряжение и температура АКБ уезжают показанием датчика — так сохраняются десятые доли; ниже нуля протокол показаний не передаёт, для холодного помещения берите текстовый элемент. Ток АКБ и мощность по сети приходят со знаком, поэтому идут текстом. Мгновенные величины (солнце, температура) агент берёт из секундных данных, остальное — из минутных: заряд и остаточная ёмкость обновляются раз в минуту, а раз в republish_sec весь набор публикуется заново. Доступность приходит словами online и offline, а в умный дом уезжает единицей или нулём в обычный виртуальный элемент: что считать потерей связи и как на неё отзываться, решает логика на объекте, а не шлюз. Контроллеров КЭС бывает до четырёх — здесь описан нулевой; для остальных скопируйте связку, поменяв mppt/0 на mppt/1 и далее.",
+  "note": "Инвертор МАП с агентом на «Малине»: тот публикует каждое поле API отдельным топиком с retain, поэтому разбирать JSON не нужно и связки читают значение целиком. В поле «префикс топиков» укажите корень инвертора из настроек агента, например microart/inv1 — без завершающего слэша. Второй инвертор заводится тем же профилем с корнем microart/inv2. Все связки только на вход: управлять МАП по шине агент не даёт. Ролей здесь много намеренно — агент отдаёт всё, что есть у инвертора, а назначать элементы нужно только тем, что вам действительно нужно на экране: роль без элемента просто не разворачивается в связку. Напряжения и температуры уезжают показанием датчика — так сохраняются десятые доли; ниже нуля протокол показаний не передаёт, для холодного помещения берите текстовый элемент. Токи и мощность по сети идут текстом: они со знаком, а показание датчика отрицательных не передаёт и обрезало бы разряд в ноль. Режим, статус, ошибка и предупреждение приходят числовыми кодами — расшифровка кодов в документации МикроАрт. Мгновенные величины агент берёт из секундных данных (bat/1), заряд и ёмкость — из минутных (bat/0), поэтому обновляются они раз в минуту. Доступность приходит словами online и offline, а в умный дом уезжает единицей или нулём: что считать потерей связи и как на неё отзываться, решает логика на объекте, а не шлюз. Счётчик энергии из сети оставлен без единицы: цена деления у прошивок разная, сверьте с монитором и при необходимости поставьте множитель в связке. Контроллеров КЭС бывает до четырёх, в профиле описан нулевой — для остальных скопируйте связку, поменяв mppt/0 на mppt/1 и далее; на трёхфазной системе так же добавляются _P_ph1…_P_ph3 и _I_ph1…_I_ph3.",
   "roles": [
     {
       "key": "soc",
@@ -14,17 +14,26 @@
     },
     {
       "key": "ubat",
-      "title": "Напряжение АКБ, В",
+      "title": "Напряжение АКБ (среднее за минуту), В",
       "form": "sensor",
       "types": [
         "float-sensor",
         "virtual"
       ],
-      "hint": "среднее за минуту, показанием датчика — с десятыми"
+      "hint": "показанием датчика — с десятыми"
+    },
+    {
+      "key": "ubat_now",
+      "title": "Напряжение АКБ (мгновенное), В",
+      "form": "sensor",
+      "types": [
+        "float-sensor",
+        "virtual"
+      ]
     },
     {
       "key": "ibat",
-      "title": "Ток АКБ, А",
+      "title": "Ток АКБ (средний за минуту), А",
       "form": "text",
       "types": [
         "virtual"
@@ -32,8 +41,50 @@
       "hint": "со знаком: плюс — заряд, минус — разряд"
     },
     {
+      "key": "ibat_now",
+      "title": "Ток АКБ (мгновенный), А",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
       "key": "cap",
       "title": "Остаточная ёмкость, А·ч",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "cap20",
+      "title": "Ёмкость АКБ C20, А·ч",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "паспортная, из настроек монитора батарей"
+    },
+    {
+      "key": "cons",
+      "title": "Израсходовано с полного заряда, А·ч",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "ttg",
+      "title": "Время до разряда АКБ",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "как отдаёт монитор батарей, без пересчёта"
+    },
+    {
+      "key": "cycles",
+      "title": "Циклов заряда АКБ",
       "form": "text",
       "types": [
         "virtual"
@@ -50,7 +101,43 @@
       ]
     },
     {
-      "key": "sun",
+      "key": "ulow",
+      "title": "Наименьшее напряжение АКБ, В",
+      "form": "sensor",
+      "types": [
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "uhigh",
+      "title": "Наибольшее напряжение АКБ, В",
+      "form": "sensor",
+      "types": [
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "uch",
+      "title": "Уставка напряжения заряда, В",
+      "form": "sensor",
+      "types": [
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "ubuf",
+      "title": "Уставка буферного напряжения, В",
+      "form": "sensor",
+      "types": [
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "sun_p",
       "title": "Мощность от солнца, Вт",
       "form": "text",
       "types": [
@@ -59,7 +146,15 @@
       "hint": "сумма по всем контроллерам КЭС"
     },
     {
-      "key": "sunday",
+      "key": "sun_i",
+      "title": "Ток от солнца, А",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "sun_day",
       "title": "Выработка солнца за сутки, кВт",
       "form": "text",
       "types": [
@@ -67,8 +162,58 @@
       ]
     },
     {
+      "key": "wind_p",
+      "title": "Мощность ветрогенератора, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "wind_day",
+      "title": "Выработка ветрогенератора за сутки, кВт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "mppt_p",
+      "title": "Мощность контроллеров по данным МАП, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "mppt0_p",
+      "title": "Мощность контроллера 1, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "раздел mppt появляется, только когда контроллер подключён"
+    },
+    {
+      "key": "mppt0_u",
+      "title": "Напряжение АКБ по контроллеру 1, В",
+      "form": "sensor",
+      "types": [
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
       "key": "unet",
       "title": "Напряжение сети, В",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "inet",
+      "title": "Ток сети, А",
       "form": "text",
       "types": [
         "virtual"
@@ -84,6 +229,31 @@
       "hint": "со знаком: минус — отдача в сеть"
     },
     {
+      "key": "fnet",
+      "title": "Частота сети, Гц",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "e_net",
+      "title": "Счётчик энергии из сети",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "без единицы: цена деления у прошивок разная"
+    },
+    {
+      "key": "net_over",
+      "title": "Перегрузка по сети, 1/0",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
       "key": "pload",
       "title": "Мощность нагрузки, Вт",
       "form": "text",
@@ -92,25 +262,121 @@
       ]
     },
     {
-      "key": "mode",
-      "title": "Режим МАП",
-      "form": "text",
-      "types": [
-        "virtual"
-      ],
-      "hint": "приходит словом, а не числом — элементу нужна текстовая форма"
-    },
-    {
-      "key": "status",
-      "title": "Статус работы МАП",
+      "key": "uout",
+      "title": "Напряжение на выходе, В",
       "form": "text",
       "types": [
         "virtual"
       ]
     },
     {
-      "key": "mppt0",
-      "title": "Мощность контроллера 1, Вт",
+      "key": "acc_over",
+      "title": "Перегрузка по АКБ, 1/0",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "mode",
+      "title": "Режим МАП, код",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "число, а не слово: расшифровка в документации МикроАрт"
+    },
+    {
+      "key": "status",
+      "title": "Статус работы МАП, код",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "eco",
+      "title": "Режим ЭКО, 1/0",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "relay1",
+      "title": "Реле 1, 1/0",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "relay2",
+      "title": "Реле 2, 1/0",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "cooler",
+      "title": "Обороты вентилятора",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "как отдаёт МАП, без пересчёта"
+    },
+    {
+      "key": "t0",
+      "title": "Температура МАП, датчик 1, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "t1",
+      "title": "Температура МАП, датчик 2, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "t2",
+      "title": "Температура МАП, датчик 3, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "err",
+      "title": "Ошибка МАП, код",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "ноль — ошибок нет"
+    },
+    {
+      "key": "warn",
+      "title": "Предупреждение МАП, код",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "fw",
+      "title": "Версия прошивки МАП",
       "form": "text",
       "types": [
         "virtual"
@@ -144,10 +410,26 @@
       "encode": "sensor"
     },
     {
+      "name": "Напряжение АКБ мгновенное",
+      "direction": "in",
+      "role": "ubat_now",
+      "topic": "{{prefix}}/map/_Uacc",
+      "encode": "sensor"
+    },
+    {
       "name": "Ток АКБ",
       "direction": "in",
       "role": "ibat",
       "topic": "{{prefix}}/bat/0/Iavg",
+      "encode": "text",
+      "unit": " А",
+      "precision": 2
+    },
+    {
+      "name": "Ток АКБ мгновенный",
+      "direction": "in",
+      "role": "ibat_now",
+      "topic": "{{prefix}}/map/_Iacc",
       "encode": "text",
       "unit": " А",
       "precision": 2
@@ -162,6 +444,38 @@
       "precision": 0
     },
     {
+      "name": "Ёмкость АКБ C20",
+      "direction": "in",
+      "role": "cap20",
+      "topic": "{{prefix}}/bat/0/C20",
+      "encode": "text",
+      "unit": " А·ч",
+      "precision": 0
+    },
+    {
+      "name": "Израсходовано с полного заряда",
+      "direction": "in",
+      "role": "cons",
+      "topic": "{{prefix}}/bat/0/cons_Ah",
+      "encode": "text",
+      "unit": " А·ч",
+      "precision": 0
+    },
+    {
+      "name": "Время до разряда АКБ",
+      "direction": "in",
+      "role": "ttg",
+      "topic": "{{prefix}}/bat/0/TTG",
+      "encode": "text"
+    },
+    {
+      "name": "Циклов заряда АКБ",
+      "direction": "in",
+      "role": "cycles",
+      "topic": "{{prefix}}/bat/0/cycles",
+      "encode": "text"
+    },
+    {
       "name": "Температура АКБ",
       "direction": "in",
       "role": "tbat",
@@ -169,23 +483,104 @@
       "encode": "sensor"
     },
     {
+      "name": "Наименьшее напряжение АКБ",
+      "direction": "in",
+      "role": "ulow",
+      "topic": "{{prefix}}/bat/0/low_V",
+      "encode": "sensor"
+    },
+    {
+      "name": "Наибольшее напряжение АКБ",
+      "direction": "in",
+      "role": "uhigh",
+      "topic": "{{prefix}}/bat/0/hi_V",
+      "encode": "sensor"
+    },
+    {
+      "name": "Уставка напряжения заряда",
+      "direction": "in",
+      "role": "uch",
+      "topic": "{{prefix}}/map/_Uch_T",
+      "encode": "sensor"
+    },
+    {
+      "name": "Уставка буферного напряжения",
+      "direction": "in",
+      "role": "ubuf",
+      "topic": "{{prefix}}/map/_Ubuf_T",
+      "encode": "sensor"
+    },
+    {
       "name": "Мощность от солнца",
       "direction": "in",
-      "role": "sun",
+      "role": "sun_p",
       "topic": "{{prefix}}/bat/1/Sun_P",
       "encode": "text",
       "unit": " Вт",
       "precision": 0
     },
     {
+      "name": "Ток от солнца",
+      "direction": "in",
+      "role": "sun_i",
+      "topic": "{{prefix}}/bat/1/Sun_I",
+      "encode": "text",
+      "unit": " А",
+      "precision": 2
+    },
+    {
       "name": "Выработка солнца за сутки",
       "direction": "in",
-      "role": "sunday",
+      "role": "sun_day",
       "topic": "{{prefix}}/bat/0/mppt_day_E",
       "encode": "text",
       "scale": 0.001,
       "unit": " кВт",
       "precision": 1
+    },
+    {
+      "name": "Мощность ветрогенератора",
+      "direction": "in",
+      "role": "wind_p",
+      "topic": "{{prefix}}/bat/1/wind_P",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Выработка ветрогенератора за сутки",
+      "direction": "in",
+      "role": "wind_day",
+      "topic": "{{prefix}}/bat/0/E_wind_day",
+      "encode": "text",
+      "scale": 0.001,
+      "unit": " кВт",
+      "precision": 1
+    },
+    {
+      "name": "Мощность контроллеров по данным МАП",
+      "direction": "in",
+      "role": "mppt_p",
+      "topic": "{{prefix}}/map/_P_mppt_avg",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Мощность контроллера 1",
+      "direction": "in",
+      "role": "mppt0_p",
+      "topic": "{{prefix}}/mppt/0/P_PV",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Напряжение АКБ по контроллеру 1",
+      "direction": "in",
+      "role": "mppt0_u",
+      "topic": "{{prefix}}/mppt/0/V_Bat",
+      "encode": "sensor"
     },
     {
       "name": "Напряжение сети",
@@ -197,6 +592,15 @@
       "precision": 0
     },
     {
+      "name": "Ток сети",
+      "direction": "in",
+      "role": "inet",
+      "topic": "{{prefix}}/map/_INET_16_4",
+      "encode": "text",
+      "unit": " А",
+      "precision": 2
+    },
+    {
       "name": "Мощность по сети",
       "direction": "in",
       "role": "pnet",
@@ -206,6 +610,29 @@
       "precision": 0
     },
     {
+      "name": "Частота сети",
+      "direction": "in",
+      "role": "fnet",
+      "topic": "{{prefix}}/map/_TFNET",
+      "encode": "text",
+      "unit": " Гц",
+      "precision": 1
+    },
+    {
+      "name": "Счётчик энергии из сети",
+      "direction": "in",
+      "role": "e_net",
+      "topic": "{{prefix}}/map/_E_NET",
+      "encode": "text"
+    },
+    {
+      "name": "Перегрузка по сети",
+      "direction": "in",
+      "role": "net_over",
+      "topic": "{{prefix}}/map/_F_Net_Over",
+      "encode": "text"
+    },
+    {
       "name": "Мощность нагрузки",
       "direction": "in",
       "role": "pload",
@@ -213,6 +640,22 @@
       "encode": "text",
       "unit": " Вт",
       "precision": 0
+    },
+    {
+      "name": "Напряжение на выходе",
+      "direction": "in",
+      "role": "uout",
+      "topic": "{{prefix}}/map/_UOUTmed",
+      "encode": "text",
+      "unit": " В",
+      "precision": 0
+    },
+    {
+      "name": "Перегрузка по АКБ",
+      "direction": "in",
+      "role": "acc_over",
+      "topic": "{{prefix}}/map/_F_Acc_Over",
+      "encode": "text"
     },
     {
       "name": "Режим МАП",
@@ -229,13 +672,75 @@
       "encode": "text"
     },
     {
-      "name": "Мощность контроллера 1",
+      "name": "Режим ЭКО",
       "direction": "in",
-      "role": "mppt0",
-      "topic": "{{prefix}}/mppt/0/P_PV",
+      "role": "eco",
+      "topic": "{{prefix}}/map/_Flag_ECO",
+      "encode": "text"
+    },
+    {
+      "name": "Реле 1",
+      "direction": "in",
+      "role": "relay1",
+      "topic": "{{prefix}}/map/_Relay1",
+      "encode": "text"
+    },
+    {
+      "name": "Реле 2",
+      "direction": "in",
+      "role": "relay2",
+      "topic": "{{prefix}}/map/_Relay2",
+      "encode": "text"
+    },
+    {
+      "name": "Обороты вентилятора",
+      "direction": "in",
+      "role": "cooler",
+      "topic": "{{prefix}}/map/_CoolerSpeed",
+      "encode": "text"
+    },
+    {
+      "name": "Температура МАП, датчик 1",
+      "direction": "in",
+      "role": "t0",
+      "topic": "{{prefix}}/map/_Temp_Grad0",
+      "encode": "sensor"
+    },
+    {
+      "name": "Температура МАП, датчик 2",
+      "direction": "in",
+      "role": "t1",
+      "topic": "{{prefix}}/map/_Temp_Grad1",
+      "encode": "sensor"
+    },
+    {
+      "name": "Температура МАП, датчик 3",
+      "direction": "in",
+      "role": "t2",
+      "topic": "{{prefix}}/map/_Temp_Grad2",
+      "encode": "sensor"
+    },
+    {
+      "name": "Ошибка МАП",
+      "direction": "in",
+      "role": "err",
+      "topic": "{{prefix}}/map/_RSErrSis",
+      "encode": "text"
+    },
+    {
+      "name": "Предупреждение МАП",
+      "direction": "in",
+      "role": "warn",
+      "topic": "{{prefix}}/map/_RSWarning",
+      "encode": "text"
+    },
+    {
+      "name": "Версия прошивки МАП",
+      "direction": "in",
+      "role": "fw",
+      "topic": "{{prefix}}/map/fw",
       "encode": "text",
-      "unit": " Вт",
-      "precision": 0
+      "precision": 1
     },
     {
       "name": "На связи",

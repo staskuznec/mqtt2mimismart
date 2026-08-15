@@ -276,6 +276,43 @@ func TestPagesRender(t *testing.T) {
 	}
 }
 
+// Топики одного инвертора МикроАрт — полторы сотни строк, а его же раздел
+// целиком приезжает одной строкой на килобайт. Без раскладушки и обрезки
+// страница превращается в портянку, в которой не видно ни соседних устройств,
+// ни кнопки «Связать»: она уезжает за правый край таблицы.
+func TestTopicsPageFoldsLongContent(t *testing.T) {
+	rows := make([]topicRow, 0, bigGroup+1)
+	for i := 0; i <= bigGroup; i++ {
+		rows = append(rows, topicRow{Topic: "microart/inv1/map/_UNET",
+			Short: "map/_UNET", Payload: "228", Kind: "number", Count: 3, Ago: "3 с назад"})
+	}
+	data := topicsData{Title: "Топики", Nav: "topics", Total: len(rows) + 1, Groups: []topicGroup{
+		{Prefix: "microart/inv1", Topics: rows, Collapsed: true},
+		{Prefix: "shellies/a", Topics: rows[:1]},
+	}}
+
+	var buf bytes.Buffer
+	if err := buildPages("/mqtt")["topics"].ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("отрисовка сорвалась: %v", err)
+	}
+
+	html := buf.String()
+	for _, want := range []string{
+		// Большая группа приезжает свёрнутой, маленькая — открытой.
+		`<details class="group" data-prefix="microart/inv1">`,
+		`<details class="group" data-prefix="shellies/a" open>`,
+		// Значение обрезается стилем, а не сервером: полное открывается щелчком.
+		`<span class="clip" data-field="payload">228</span>`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("в странице нет фрагмента %s", want)
+		}
+	}
+	if open, closed := strings.Count(html, "<details"), strings.Count(html, "</details>"); open != closed {
+		t.Errorf("тег <details> открыт %d раз, закрыт %d", open, closed)
+	}
+}
+
 // checkTags ловит теги, оказавшиеся внутри цикла.
 //
 // Закрывающий {{end}} после </tbody> выглядит безобидно: разбор проходит,
