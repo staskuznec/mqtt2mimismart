@@ -156,8 +156,11 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 		{"microart-map", "Температура АКБ", "24.5", "24.5", "80 18"},
 		// Режим приходит словом — числом его делать нечем, уезжает текстом.
 		{"microart-map", "Режим МАП", "Сеть", "Сеть", ""},
-		{"microart-map", "На связи", "online", "1", "01"},
-		{"microart-map", "На связи", "offline", "0", "00"},
+		// Доступность уезжает единицей и нулём в виртуальный элемент, а не
+		// однобайтовым состоянием: как отзываться на потерю связи, решает
+		// логика на объекте.
+		{"microart-map", "На связи", "online", "1", "31"},
+		{"microart-map", "На связи", "offline", "0", "30"},
 	} {
 		t.Run(tc.profile+"/"+tc.link, func(t *testing.T) {
 			l := linkFromProfile(t, tc.profile, tc.link)
