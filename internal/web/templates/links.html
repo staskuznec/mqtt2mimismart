@@ -27,7 +27,9 @@
           {{.Topic}}
           {{with .CommandTopic}}<br><span class="hint mono">{{.}}</span>{{end}}
         </td>
-        <td class="mono">{{.Addr}}{{with .Name}}<br><span class="hint">{{.}}</span>{{end}}</td>
+        <td class="mono">{{.Addr}}{{if .Missing}}
+            <span class="pill bad" title="в logic.xml такого адреса нет: значения уходят в пустоту">нет элемента</span>
+          {{end}}{{with .Name}}<br><span class="hint">{{.}}</span>{{end}}</td>
         <td>{{.Form}}</td>
         <td class="mono">{{.LastValue}}</td>
         <td class="num">{{.Errors}}</td>

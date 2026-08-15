@@ -339,6 +339,15 @@ type linkRow struct {
 	Errors       uint64
 	LastError    string
 	Paired       bool
+
+	// Missing — элемента с таким адресом в logic.xml больше нет.
+	//
+	// Связки живут в базе шлюза, а умный дом о них не знает: элемент можно
+	// удалить или перенумеровать, и связка останется цела. Отправка при этом
+	// не ошибается — пакет уходит на адрес, которого нет, и молча пропадает.
+	// Хуже другое: заведут по тому же адресу новый элемент, и значения
+	// поедут в него. Поэтому такие связки помечаем.
+	Missing bool
 }
 
 func (s *server) pageLinks(w http.ResponseWriter, r *http.Request) {
@@ -361,6 +370,16 @@ func (s *server) pageLinks(w http.ResponseWriter, r *http.Request) {
 	var stats map[int64]link.Stats
 	if s.status.Links != nil {
 		stats = s.status.Links()
+	}
+
+	// Адреса, которые умный дом сейчас знает. Пустой список означает, что
+	// logic.xml ещё не приехал: тогда помечать нечего — иначе при обрыве
+	// связи все связки разом оказались бы «потерянными».
+	known := make(map[string]bool)
+	if s.status.Elements != nil {
+		for _, e := range s.status.Elements() {
+			known[e.Addr()] = true
+		}
 	}
 
 	// Двусторонняя привязка показывается одной строкой: две — это внутреннее
@@ -401,6 +420,7 @@ func (s *server) pageLinks(w http.ResponseWriter, r *http.Request) {
 			ID: l.ID, PairID: l.PairID, Enabled: l.Enabled, Topic: l.Topic,
 			Addr: l.Addr(), Name: l.Name, Paired: l.PairID != 0,
 			LastValue: st.LastValue, Errors: st.Errors, LastError: st.LastError,
+			Missing: len(known) > 0 && !known[l.Addr()],
 		}
 		if l.Direction == link.Out {
 			row.Arrow, row.Form = "дом → шина", l.Decode
