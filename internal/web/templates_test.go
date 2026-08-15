@@ -313,6 +313,41 @@ func TestTopicsPageFoldsLongContent(t *testing.T) {
 	}
 }
 
+// Элементов умного дома на объекте четыре сотни, и в форме устройства список
+// повторяется по одному на каждую роль профиля. Без поиска нужный элемент там
+// не находится вовсе: имена отличаются одним словом или номером. Поиск живёт
+// в layout и цепляется к любому длинному списку сам — своего в страницах быть
+// не должно, иначе над одним списком окажется два поля.
+func TestLongSelectsGetSearch(t *testing.T) {
+	layout, err := templateFS.ReadFile("templates/layout.html")
+	if err != nil {
+		t.Fatalf("чтение layout: %v", err)
+	}
+	for _, want := range []string{`box.className = "pick"`, `querySelectorAll("select")`} {
+		if !strings.Contains(string(layout), want) {
+			t.Errorf("в layout нет поиска по спискам: %s", want)
+		}
+	}
+
+	err = fs.WalkDir(templateFS, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".html") ||
+			strings.HasSuffix(path, "layout.html") {
+			return err
+		}
+		body, err := templateFS.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(body), "filterElements") {
+			t.Errorf("%s: свой поиск по списку — он уже есть в layout", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("обход шаблонов: %v", err)
+	}
+}
+
 // checkTags ловит теги, оказавшиеся внутри цикла.
 //
 // Закрывающий {{end}} после </tbody> выглядит безобидно: разбор проходит,

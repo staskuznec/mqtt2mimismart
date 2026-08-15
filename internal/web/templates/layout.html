@@ -172,6 +172,15 @@
     color: var(--muted); padding: 40px 20px; text-align: center;
     background: var(--panel); border: 1px dashed var(--line); border-radius: var(--radius);
   }
+
+  /* Поиск по длинному списку. На объекте с четырьмя сотнями элементов найти
+     нужный глазами в выпадающем списке невозможно. */
+  input.pick {
+    width: 100%; margin-top: 6px; padding: 7px 11px; font: inherit; font-size: 14px;
+    color: var(--fg); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  input.pick + select { margin-top: 5px; }
 </style>
 
 <header>
@@ -187,4 +196,80 @@
   </nav>
 </header>
 <main>{{template "content" .}}</main>
+
+<script>
+// Поиск по длинным выпадающим спискам.
+//
+// Элементов умного дома на объекте несколько сотен, и выбрать нужный из
+// списка на четыре сотни строк глазами нельзя: они называются похоже и
+// отличаются одним словом или номером. Поэтому над каждым длинным списком
+// сам появляется поиск.
+//
+// Ищется и по имени, и по адресу: «гараж-инвертор1-аккумулятор1» найдёт
+// «Гараж → Инвертор1 → Аккумулятор1», а «563:113» — его же по адресу.
+// Разделители — пробел, дефис, стрелка, точка — считаются одинаковыми, и
+// слова можно писать в любом порядке: ищется каждое по отдельности.
+(function () {
+    // С какого числа вариантов список стоит искать. Короткий и так виден
+    // целиком, и поле над ним только мешало бы.
+    var MIN = 12;
+
+    function norm(s) {
+        return s.toLowerCase().replace(/[\s·→\-—/(),]+/g, " ").trim();
+    }
+
+    document.querySelectorAll("select").forEach(function (sel) {
+        var all = Array.prototype.slice.call(sel.options);
+        if (sel.multiple || all.length <= MIN) { return; }
+
+        var keys = all.map(function (o) { return norm(o.textContent + " " + o.value); });
+
+        var box = document.createElement("input");
+        box.type = "search";
+        box.className = "pick";
+        box.placeholder = "поиск: часть имени или адрес вида 563:113";
+        box.autocomplete = "off";
+        sel.parentNode.insertBefore(box, sel);
+
+        // Enter в поиске не должен отправлять форму: человек ищет элемент, а
+        // не сохраняет наполовину заполненную связку.
+        box.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") { e.preventDefault(); }
+        });
+
+        var empty = null;
+
+        box.addEventListener("input", function () {
+            var words = norm(box.value).split(" ").filter(Boolean);
+            var chosen = sel.value;
+            var found = 0;
+
+            sel.textContent = "";
+            all.forEach(function (option, i) {
+                var hit = words.every(function (w) { return keys[i].indexOf(w) >= 0; });
+                // Пустой вариант — это «не нужно», он нужен всегда. Выбранный
+                // тоже оставляем: спрятав его, поиск молча сменил бы выбор.
+                if (hit) { found++; }
+                if (hit || option.value === "" || option.value === chosen) {
+                    sel.appendChild(option);
+                }
+            });
+
+            // Пока идёт поиск, список раскрываем в несколько строк: иначе
+            // найденное придётся снова искать, уже внутри выпадашки.
+            sel.size = (words.length && found > 1) ? Math.min(found, 12) : 1;
+
+            if (found === 0) {
+                if (!empty) {
+                    empty = document.createElement("option");
+                    empty.disabled = true;
+                    empty.textContent = "— ничего не найдено —";
+                }
+                sel.appendChild(empty);
+            }
+            sel.value = chosen;
+        });
+    });
+})();
+</script>
 {{end}}

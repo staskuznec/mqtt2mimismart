@@ -36,8 +36,6 @@
 
   <label>Элемент умного дома
     <span>наберите часть имени, области или адреса, чтобы отфильтровать список</span>
-    <input type="text" id="element-search" placeholder="прихожая, свет, 758…"
-           oninput="filterElements(this.value)" autocomplete="off">
     <select name="target" required id="element-select" size="1">
       <option value="">— выберите —</option>
       {{range .Elements}}
@@ -143,24 +141,8 @@ document.querySelector('select[name=target]').addEventListener('change', functio
   if (form) { document.querySelector('select[name=encode]').value = form; }
 });
 
-// Поиск по элементам: на объекте ихтри сотни, и пролистывать список глазами
-// невыносимо. Фильтруем прямо в браузере — список уже здесь, ходить на сервер
-// не за чем.
-const allOptions = Array.from(document.querySelectorAll('#element-select option'));
-function filterElements(query) {
-  const q = query.trim().toLowerCase();
-  const select = document.getElementById('element-select');
-  const selected = select.value;
-  select.innerHTML = '';
-  let shown = 0;
-  for (const opt of allOptions) {
-    if (!q || opt.textContent.toLowerCase().includes(q) || opt.value === selected) {
-      select.appendChild(opt);
-      shown++;
-    }
-  }
-  select.size = (q && shown > 1) ? Math.min(shown, 12) : 1;
-}
+// Поиск по элементам общий для всех длинных списков и живёт в layout: он же
+// нужен в форме устройства, где списков десятки — по одному на роль.
 
 // Ненужную половину формы прячем: показывать поля, которые ни на что не
 // влияют, — верный способ заполнить их и потом гадать, почему не работает.
