@@ -1,0 +1,477 @@
+{
+  "name": "МикроАрт МАП Hybrid — инвертор без монитора батарей",
+  "model": "microart map hybrid",
+  "note": "МАП, с которого агент публикует только раздел map: разделов bat и mppt у него нет вовсе. Так выглядит Hybrid и Sin Pro без монитора батарей — заряд в процентах, остаточная ёмкость, циклы, время до разряда и температура АКБ на таком инверторе взять неоткуда. Напряжение и ток АКБ есть, из map/_Uacc и map/_Iacc; ток целыми амперами, десятых там нет. Если у вашего МАП монитор батарей всё же работает и в топиках появился раздел bat — берите профиль Dominator, там всё то же самое плюс батарея и солнце. Реле МАП здесь не описаны: сухие контакты и второй вход для генератора — особенность Dominator, а поля _Relay1 и _Relay2 публикуются у всех и на этих инверторах ни о чём не говорят. В поле «префикс топиков» укажите корень инвертора из настроек агента, например microart/inv2 — без завершающего слэша. Все связки только на вход: управлять МАП по шине агент не даёт. Ток заряда и ток разряда — это один и тот же ток АКБ, разложенный на две половины: во вторую связку он идёт с обратным знаком, и каждая показывает своё, а чужое — ноль. Так сценарий отличает заряд от разряда сравнением, без арифметики; предупреждение об обрезке в журнале здесь ожидаемо. Доступность приходит словами online и offline, а уезжает единицей или нулём — текстом на экран или показанием в логику, смотря какой элемент заведён. Счётчик энергии из сети оставлен без единицы: цена деления у прошивок разная, сверьте с монитором и при необходимости поставьте множитель. Пофазные поля (_P_ph1…3, _I_ph1…3, _P_acc_3ph, _I_acc_3ph) в профиль не вошли намеренно: на однофазном МАП там лежат сотни киловатт и тысячи ампер.",
+  "roles": [
+    {
+      "key": "ubat",
+      "title": "Напряжение АКБ, В",
+      "form": "sensor",
+      "types": [
+        "float-sensor",
+        "virtual"
+      ],
+      "hint": "показанием датчика — с десятыми"
+    },
+    {
+      "key": "i_charge",
+      "title": "Ток заряда АКБ, А (показанием датчика)",
+      "form": "sensor",
+      "types": [
+        "float-sensor",
+        "virtual"
+      ],
+      "hint": "при разряде показывает ноль — отрицательных показание не передаёт"
+    },
+    {
+      "key": "i_discharge",
+      "title": "Ток разряда АКБ, А (показанием датчика)",
+      "form": "sensor",
+      "types": [
+        "float-sensor",
+        "virtual"
+      ],
+      "hint": "тот же ток с обратным знаком: разряд числом, при заряде ноль"
+    },
+    {
+      "key": "ibat",
+      "title": "Ток АКБ, А",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "со знаком: плюс — заряд, минус — разряд"
+    },
+    {
+      "key": "uch",
+      "title": "Уставка напряжения заряда, В",
+      "form": "sensor",
+      "types": [
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "ubuf",
+      "title": "Уставка буферного напряжения, В",
+      "form": "sensor",
+      "types": [
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "unet",
+      "title": "Напряжение сети, В",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "inet",
+      "title": "Ток сети, А",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "pnet",
+      "title": "Мощность по сети, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "со знаком: минус — отдача в сеть"
+    },
+    {
+      "key": "fnet",
+      "title": "Частота сети, Гц",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "e_net",
+      "title": "Счётчик энергии из сети",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "без единицы: цена деления у прошивок разная"
+    },
+    {
+      "key": "net_over",
+      "title": "Перегрузка по сети, 1/0",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "pload",
+      "title": "Мощность нагрузки, Вт",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "uout",
+      "title": "Напряжение на выходе, В",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "acc_over",
+      "title": "Перегрузка по АКБ, 1/0",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "mode",
+      "title": "Режим МАП, код",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "число, а не слово: расшифровка в документации МикроАрт"
+    },
+    {
+      "key": "status",
+      "title": "Статус работы МАП, код",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "eco",
+      "title": "Режим ЭКО, 1/0",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "cooler",
+      "title": "Обороты вентилятора",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "как отдаёт МАП, без пересчёта"
+    },
+    {
+      "key": "t0",
+      "title": "Температура МАП, датчик 1, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "t1",
+      "title": "Температура МАП, датчик 2, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "t2",
+      "title": "Температура МАП, датчик 3, °C",
+      "form": "sensor",
+      "types": [
+        "temperature-sensor",
+        "float-sensor",
+        "virtual"
+      ]
+    },
+    {
+      "key": "err",
+      "title": "Ошибка МАП, код",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "ноль — ошибок нет"
+    },
+    {
+      "key": "warn",
+      "title": "Предупреждение МАП, код",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "uid",
+      "title": "Номер инвертора (UID)",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "у каждого МАП свой: по нему видно, чьи это показания"
+    },
+    {
+      "key": "fw",
+      "title": "Версия прошивки МАП",
+      "form": "text",
+      "types": [
+        "virtual"
+      ]
+    },
+    {
+      "key": "online_sensor",
+      "title": "Инвертор на связи, показанием датчика",
+      "form": "sensor",
+      "types": [
+        "float-sensor",
+        "virtual"
+      ],
+      "hint": "единица и ноль двумя байтами — чтобы сценарий мог сравнить"
+    },
+    {
+      "key": "online",
+      "title": "Инвертор на связи, 1/0",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "единица — на связи, ноль — нет; что с этим делать, решает логика умного дома"
+    }
+  ],
+  "links": [
+    {
+      "name": "Напряжение АКБ",
+      "direction": "in",
+      "role": "ubat",
+      "topic": "{{prefix}}/map/_Uacc",
+      "encode": "sensor"
+    },
+    {
+      "name": "Ток заряда АКБ",
+      "direction": "in",
+      "role": "i_charge",
+      "topic": "{{prefix}}/map/_Iacc",
+      "encode": "sensor"
+    },
+    {
+      "name": "Ток разряда АКБ",
+      "direction": "in",
+      "role": "i_discharge",
+      "topic": "{{prefix}}/map/_Iacc",
+      "encode": "sensor",
+      "scale": -1
+    },
+    {
+      "name": "Ток АКБ",
+      "direction": "in",
+      "role": "ibat",
+      "topic": "{{prefix}}/map/_Iacc",
+      "encode": "text",
+      "unit": " А",
+      "precision": 2
+    },
+    {
+      "name": "Уставка напряжения заряда",
+      "direction": "in",
+      "role": "uch",
+      "topic": "{{prefix}}/map/_Uch_T",
+      "encode": "sensor"
+    },
+    {
+      "name": "Уставка буферного напряжения",
+      "direction": "in",
+      "role": "ubuf",
+      "topic": "{{prefix}}/map/_Ubuf_T",
+      "encode": "sensor"
+    },
+    {
+      "name": "Напряжение сети",
+      "direction": "in",
+      "role": "unet",
+      "topic": "{{prefix}}/map/_UNET",
+      "encode": "text",
+      "unit": " В",
+      "precision": 0
+    },
+    {
+      "name": "Ток сети",
+      "direction": "in",
+      "role": "inet",
+      "topic": "{{prefix}}/map/_INET_16_4",
+      "encode": "text",
+      "unit": " А",
+      "precision": 2
+    },
+    {
+      "name": "Мощность по сети",
+      "direction": "in",
+      "role": "pnet",
+      "topic": "{{prefix}}/map/_PNET",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Частота сети",
+      "direction": "in",
+      "role": "fnet",
+      "topic": "{{prefix}}/map/_TFNET",
+      "encode": "text",
+      "unit": " Гц",
+      "precision": 1
+    },
+    {
+      "name": "Счётчик энергии из сети",
+      "direction": "in",
+      "role": "e_net",
+      "topic": "{{prefix}}/map/_E_NET",
+      "encode": "text"
+    },
+    {
+      "name": "Перегрузка по сети",
+      "direction": "in",
+      "role": "net_over",
+      "topic": "{{prefix}}/map/_F_Net_Over",
+      "encode": "text"
+    },
+    {
+      "name": "Мощность нагрузки",
+      "direction": "in",
+      "role": "pload",
+      "topic": "{{prefix}}/map/_PLoad",
+      "encode": "text",
+      "unit": " Вт",
+      "precision": 0
+    },
+    {
+      "name": "Напряжение на выходе",
+      "direction": "in",
+      "role": "uout",
+      "topic": "{{prefix}}/map/_UOUTmed",
+      "encode": "text",
+      "unit": " В",
+      "precision": 0
+    },
+    {
+      "name": "Перегрузка по АКБ",
+      "direction": "in",
+      "role": "acc_over",
+      "topic": "{{prefix}}/map/_F_Acc_Over",
+      "encode": "text"
+    },
+    {
+      "name": "Режим МАП",
+      "direction": "in",
+      "role": "mode",
+      "topic": "{{prefix}}/map/_MODE",
+      "encode": "text"
+    },
+    {
+      "name": "Статус работы МАП",
+      "direction": "in",
+      "role": "status",
+      "topic": "{{prefix}}/map/_Status_Char",
+      "encode": "text"
+    },
+    {
+      "name": "Режим ЭКО",
+      "direction": "in",
+      "role": "eco",
+      "topic": "{{prefix}}/map/_Flag_ECO",
+      "encode": "text"
+    },
+    {
+      "name": "Обороты вентилятора",
+      "direction": "in",
+      "role": "cooler",
+      "topic": "{{prefix}}/map/_CoolerSpeed",
+      "encode": "text"
+    },
+    {
+      "name": "Температура МАП, датчик 1",
+      "direction": "in",
+      "role": "t0",
+      "topic": "{{prefix}}/map/_Temp_Grad0",
+      "encode": "sensor"
+    },
+    {
+      "name": "Температура МАП, датчик 2",
+      "direction": "in",
+      "role": "t1",
+      "topic": "{{prefix}}/map/_Temp_Grad1",
+      "encode": "sensor"
+    },
+    {
+      "name": "Температура МАП, датчик 3",
+      "direction": "in",
+      "role": "t2",
+      "topic": "{{prefix}}/map/_Temp_Grad2",
+      "encode": "sensor"
+    },
+    {
+      "name": "Ошибка МАП",
+      "direction": "in",
+      "role": "err",
+      "topic": "{{prefix}}/map/_RSErrSis",
+      "encode": "text"
+    },
+    {
+      "name": "Предупреждение МАП",
+      "direction": "in",
+      "role": "warn",
+      "topic": "{{prefix}}/map/_RSWarning",
+      "encode": "text"
+    },
+    {
+      "name": "Номер инвертора",
+      "direction": "in",
+      "role": "uid",
+      "topic": "{{prefix}}/map/_UID",
+      "encode": "text"
+    },
+    {
+      "name": "Версия прошивки МАП",
+      "direction": "in",
+      "role": "fw",
+      "topic": "{{prefix}}/map/fw",
+      "encode": "text",
+      "precision": 1
+    },
+    {
+      "name": "На связи показанием",
+      "direction": "in",
+      "role": "online_sensor",
+      "topic": "{{prefix}}/availability",
+      "encode": "sensor",
+      "values": {
+        "online": "1",
+        "offline": "0"
+      }
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/availability",
+      "encode": "text",
+      "values": {
+        "online": "1",
+        "offline": "0"
+      }
+    }
+  ]
+}
