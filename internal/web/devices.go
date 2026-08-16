@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/staskuznec/mqtt2mimismart/internal/devtmpl"
+	"github.com/staskuznec/mqtt2mimismart/internal/logic"
 	"github.com/staskuznec/mqtt2mimismart/internal/store"
 )
 
@@ -70,6 +71,27 @@ type deviceFormData struct {
 	// Roles — роли шаблона вместе с подходящими им элементами: список сужен
 	// по типам, чтобы не искать лампу среди трёх сотен строк.
 	Roles []roleOption
+
+	// Заведение элементов прямо здесь: под роль, которой в умном доме ещё
+	// нечего назначить, шлюз подберёт свободный адрес и соберёт разметку.
+	Modules []uint16 // модули (CM), которые уже есть в logic.xml
+	Areas   []string
+	Module  uint16
+	Area    string
+	FromSub uint8
+
+	// XML — разметка для logic.xml, собранная при сохранении, и что в неё
+	// вошло. Показывается после развёртывания: вставить её должен человек.
+	XML     string
+	Created []createdRow
+}
+
+// createdRow — элемент, заведённый под роль.
+type createdRow struct {
+	Title string
+	Name  string
+	Addr  string
+	Kind  string
 }
 
 // roleOption — роль с уже отобранными под неё элементами.
@@ -111,6 +133,14 @@ func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 	data.Prefix = r.URL.Query().Get("prefix")
 	data.Prefixes = s.prefixOptions(r)
 	data.Elements = s.elementOptions("")
+
+	house := s.house()
+	data.Modules = house.ModuleIDs()
+	if len(data.Modules) > 0 {
+		data.Module = data.Modules[0]
+		data.FromSub = house.NextFreeSubID(data.Module)
+	}
+	data.Areas = house.Areas()
 
 	// Правка заведённого устройства: тот же визард с подставленными
 	// назначениями. Пересоздавать устройство ради переназначенной роли —
@@ -288,11 +318,16 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fail := func(msg string, assign map[string]devtmpl.Addr) {
+		house := s.house()
 		data := deviceFormData{
 			Title: "Новое устройство", Nav: "devices",
 			Error: msg, Name: name, Prefix: prefix, DeviceID: deviceID,
 			Prefixes: s.prefixOptions(r),
 			Elements: s.elementOptions(""),
+			Modules:  house.ModuleIDs(),
+			Areas:    house.Areas(),
+			Module:   moduleFromForm(r),
+			Area:     trim(r.PostFormValue("area")),
 		}
 		if deviceID != 0 {
 			data.Title = "Настройка устройства"
@@ -320,11 +355,18 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Роли без выбранного элемента просто пропускаются: не нужны показания —
-	// не назначайте их.
+	// не назначайте их. Значение "new" означает, что элемента в умном доме
+	// ещё нет и его надо завести.
 	assign := make(map[string]devtmpl.Addr)
+	var create []devtmpl.Role
+
 	for _, role := range tmpl.Roles {
 		addr := trim(r.PostFormValue("role_" + role.Key))
-		if addr == "" {
+		switch addr {
+		case "":
+			continue
+		case createValue:
+			create = append(create, role)
 			continue
 		}
 		id, subID, err := parseAddr(addr)
@@ -333,6 +375,45 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		assign[role.Key] = devtmpl.Addr{ID: id, SubID: subID}
+	}
+
+	// Заведение элементов: адреса подбираются из свободных на выбранном
+	// модуле. Занятые пропускаются — записать показание в чужой элемент хуже,
+	// чем не завести его вовсе.
+	var items []logic.NewItem
+	if len(create) > 0 {
+		module := moduleFromForm(r)
+		area := trim(r.PostFormValue("area"))
+		switch {
+		case module == 0:
+			fail("не выбран модуль (CM), на котором заводить элементы", assign)
+			return
+		case area == "":
+			fail("не указана область: в неё попадут заведённые элементы", assign)
+			return
+		}
+
+		house := s.house()
+		subs, err := house.FreeSubIDs(module, len(create), subFromForm(r, house, module))
+		if err != nil {
+			fail(err.Error(), assign)
+			return
+		}
+
+		topics := make(map[string]string, len(tmpl.Links))
+		for _, l := range tmpl.Links {
+			if _, ok := topics[l.Role]; !ok {
+				topics[l.Role] = topicOf(l.Topic, prefix)
+			}
+		}
+
+		for i, role := range create {
+			item := logic.ItemFor(module, subs[i],
+				elementName(name, role.Title), role.Form, topics[role.Key])
+			item.Dim = logic.DimFor(role.Title)
+			items = append(items, item)
+			assign[role.Key] = devtmpl.Addr{ID: item.ID, SubID: item.SubID}
+		}
 	}
 
 	device := store.Device{ID: deviceID, Name: name, TopicPrefix: prefix}
@@ -347,7 +428,66 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.reload(r)
+
+	if len(items) > 0 {
+		// Связки уже заведены и ждут своих элементов; вставить разметку в
+		// logic.xml должен человек. Поэтому не редирект на список устройств, а
+		// страница с готовым куском и порядком действий.
+		area := trim(r.PostFormValue("area"))
+		data := deviceCreatedData{
+			Title: "Элементы заведены", Nav: "devices",
+			Device: name, Area: area, XML: logic.RenderArea(area, items),
+		}
+		for i, item := range items {
+			data.Created = append(data.Created, createdRow{
+				Title: create[i].Title, Name: item.Name,
+				Addr: item.Addr(), Kind: item.SubType,
+			})
+		}
+		s.render(w, "device_created", data)
+		return
+	}
+
 	s.redirect(w, r, "/devices")
+}
+
+// deviceCreatedData — что показать после развёртывания с заведением элементов.
+type deviceCreatedData struct {
+	Title, Nav string
+	Device     string
+	Area       string
+	XML        string
+	Created    []createdRow
+}
+
+// createValue — значение в списке элементов, означающее «завести новый».
+const createValue = "new"
+
+// moduleFromForm читает выбранный модуль.
+func moduleFromForm(r *http.Request) uint16 {
+	v := trim(r.PostFormValue("module"))
+	if v == "" {
+		return 0
+	}
+	id, err := strconv.ParseUint(v, 10, 16)
+	if err != nil {
+		return 0
+	}
+	return uint16(id)
+}
+
+// subFromForm читает, с какого адреса начинать. Пусто — со следующего за
+// последним занятым на этом модуле.
+func subFromForm(r *http.Request, house logic.House, module uint16) uint8 {
+	v := trim(r.PostFormValue("from_sub"))
+	if v == "" {
+		return house.NextFreeSubID(module)
+	}
+	sub, err := strconv.ParseUint(v, 10, 8)
+	if err != nil {
+		return house.NextFreeSubID(module)
+	}
+	return uint8(sub)
 }
 
 func (s *server) deleteDevice(w http.ResponseWriter, r *http.Request) {

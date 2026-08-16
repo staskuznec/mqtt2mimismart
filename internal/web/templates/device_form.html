@@ -49,6 +49,36 @@
       и связок под них не появится.
     </p>
 
+    <label class="check">
+      <input type="checkbox" id="create-on" onchange="toggleCreate()">
+      <span>Создать элементы в умном доме
+        <span class="hint">— в списке ролей появится «создать элемент»: шлюз подберёт
+        свободный адрес и соберёт разметку для logic.xml</span></span>
+    </label>
+
+    <div id="create-box" style="display:none">
+      <label>Модуль (CM) <span>— на нём заводятся виртуальные элементы</span>
+        <select name="module">
+          {{range .Modules}}<option value="{{.}}" {{if eq . $.Module}}selected{{end}}>{{.}}</option>{{end}}
+        </select></label>
+      {{if not .Modules}}
+        <p class="hint">Список пуст: logic.xml ещё не приехал — проверьте связь с умным домом.</p>
+      {{end}}
+
+      <label>Первый sub-id <span>— занятые адреса пропускаются сами</span>
+        <input type="text" name="from_sub" value="{{.FromSub}}"></label>
+
+      <label>Область <span>— куда попадут элементы в дереве дома</span>
+        <input type="text" name="area" value="{{.Area}}" list="areas" placeholder="Инвертор1"></label>
+      <datalist id="areas">
+        {{range .Areas}}<option value="{{.}}">{{end}}
+      </datalist>
+
+      <p class="actions">
+        <button type="button" class="ghost" onclick="createAll()">Создать под все незаполненные роли</button>
+      </p>
+    </div>
+
     {{range .Roles}}
       <label>{{.Title}}{{if .Required}} <span style="color:var(--bad)">— обязательно</span>{{end}}
         <span>{{with .Hint}}{{.}}{{end}}{{if .Narrowed}}
@@ -56,10 +86,31 @@
           из {{len $.Elements}}){{end}}</span>
         <select name="role_{{.Key}}" {{if .Required}}required{{end}}>
           <option value="">— не нужно —</option>
+          <option value="new" class="create-opt" hidden>— создать элемент —</option>
           {{$sel := .Selected}}
           {{range .Elements}}<option value="{{.Addr}}" {{if eq .Addr $sel}}selected{{end}}>{{.Label}} · {{.Addr}}</option>{{end}}
         </select></label>
     {{end}}
+
+    <script>
+    // Вариант «создать элемент» показывается только при включённой галочке:
+    // иначе его выбирают случайно и получают адрес там, где хотели готовый.
+    function toggleCreate() {
+        var on = document.getElementById('create-on').checked;
+        document.getElementById('create-box').style.display = on ? '' : 'none';
+        document.querySelectorAll('option.create-opt').forEach(function (o) {
+            o.hidden = !on;
+            if (!on && o.selected) { o.parentNode.value = ''; }
+        });
+    }
+    // Кнопка «отметить всё нужное»: роли, под которые элемента ещё нет,
+    // переводятся в «создать» одним действием — их тут полсотни.
+    function createAll() {
+        document.querySelectorAll('option.create-opt').forEach(function (o) {
+            if (o.parentNode.value === '') { o.parentNode.value = 'new'; }
+        });
+    }
+    </script>
 
     {{if not .Elements}}
       <p class="msg bad">Список элементов пуст: logic.xml приезжает при подключении к

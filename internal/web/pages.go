@@ -37,18 +37,19 @@ func buildPages(base string) map[string]*template.Template {
 	}
 
 	return map[string]*template.Template{
-		"overview":      parse("overview.html"),
-		"settings":      parse("settings.html"),
-		"topics":        parse("topics.html"),
-		"links":         parse("links.html"),
-		"link_form":     parse("link_form.html"),
-		"elements":      parse("elements.html"),
-		"elements_new":  parse("elements_new.html"),
-		"devices":       parse("devices.html"),
-		"device_form":   parse("device_form.html"),
-		"templates":     parse("templates.html"),
-		"log":           parse("log.html"),
-		"template_edit": parse("template_edit.html"),
+		"overview":       parse("overview.html"),
+		"settings":       parse("settings.html"),
+		"topics":         parse("topics.html"),
+		"links":          parse("links.html"),
+		"link_form":      parse("link_form.html"),
+		"elements":       parse("elements.html"),
+		"elements_new":   parse("elements_new.html"),
+		"devices":        parse("devices.html"),
+		"device_form":    parse("device_form.html"),
+		"device_created": parse("device_created.html"),
+		"templates":      parse("templates.html"),
+		"log":            parse("log.html"),
+		"template_edit":  parse("template_edit.html"),
 
 		// Проба возвращается кусочком страницы, поэтому общее оформление ей
 		// не нужно — она подставляется в уже открытую форму.

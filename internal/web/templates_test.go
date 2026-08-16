@@ -244,6 +244,12 @@ func TestPagesRender(t *testing.T) {
 			Roles: []roleOption{{Role: item.Roles[0], Elements: []elementOption{element},
 				Narrowed: true, Selected: "758:4"}},
 		},
+		"device_created": deviceCreatedData{
+			Title: "Элементы заведены", Nav: "devices", Device: "Инвертор 1",
+			Area: "Инвертор1", XML: "        <area name=\"Инвертор1\">\n        </area>\n",
+			Created: []createdRow{{Title: "Заряд АКБ", Name: "Инвертор 1 Заряд АКБ",
+				Addr: "563:115", Kind: "sensor"}},
+		},
 		"templates": templatesData{
 			Title: "Профили", Nav: "templates", Dir: "/tmp/profiles",
 			Templates: []devtmpl.Item{item}, Saved: "sample",

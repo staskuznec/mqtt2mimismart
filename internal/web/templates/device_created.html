@@ -1,0 +1,49 @@
+{{define "content"}}
+<h1>Элементы заведены</h1>
+<p class="hint">
+  Устройство <b>{{.Device}}</b> развёрнуто, связки уже ждут своих элементов.
+  Осталось одно действие, которое шлюз сделать не может: <span class="mono">logic.xml</span>
+  принадлежит серверу умного дома и открыт только на чтение — вставьте разметку
+  сами. Пока элементов нет, связки будут помечены на странице
+  <a href="links">Связки</a> как «нет элемента»: это нормально, они оживут сразу
+  после вставки.
+</p>
+
+<h2>Что сделать</h2>
+<ol class="hint">
+  <li>Вставить кусок ниже в <span class="mono">logic.xml</span> рядом с другими областями.</li>
+  <li>Перезагрузить умный дом, чтобы он перечитал файл.</li>
+  <li>Нажать «Перечитать logic.xml» на странице <a href="elements">Элементы</a>.</li>
+</ol>
+
+<textarea rows="12" readonly id="xml" style="min-height:220px">{{.XML}}</textarea>
+<div class="actions">
+  <button type="button" onclick="copyXML()">Скопировать</button>
+  <a href="devices" class="btn ghost">К списку устройств</a>
+</div>
+
+<h2>Область «{{.Area}}»</h2>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Роль</th><th>Элемент</th><th>Адрес</th><th>Вид</th></tr></thead>
+  <tbody>
+  {{range .Created}}
+    <tr>
+      <td>{{.Title}}</td>
+      <td>{{.Name}}</td>
+      <td class="mono">{{.Addr}}</td>
+      <td class="hint">{{.Kind}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<script>
+function copyXML() {
+    var box = document.getElementById('xml');
+    box.select();
+    document.execCommand('copy');
+}
+</script>
+{{end}}
