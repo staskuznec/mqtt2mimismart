@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"io/fs"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
@@ -214,6 +215,16 @@ func TestPagesRender(t *testing.T) {
 			ValuesText: "on = 1", ValuesOut: "toggle = toggle",
 			Decode: "lamp", Kind: "command", QoS: 1,
 		},
+		"elements_new": elementsNewData{
+			Title: "Завести элементы", Nav: "elements",
+			Templates: []devtmpl.Item{item}, Selected: item.Template, HasChoice: true,
+			Modules: []uint16{563}, Module: 563, FromSub: 115,
+			Area: "Инвертор1", Areas: []string{"Инвертор1"}, Prefix: "microart/inv1",
+			XML: "        <area name=\"Инвертор1\">\n        </area>\n",
+			Items: []genRow{{Role: "ch0", Title: "Канал", Addr: "563:115",
+				Name: "Канал", Kind: "text", Topic: "microart/inv1/relay/0"}},
+			Link: "devices/new?template=sample",
+		},
 		"elements": elementsData{
 			Title: "Элементы", Nav: "elements",
 			Elements: []logic.Element{{ID: 758, SubID: 4, Name: "Свет", Type: "lamp", Area: "Прихожая"}},
@@ -370,5 +381,36 @@ func checkTags(t *testing.T, page, html string) {
 	// незакрытая строка так же ломает разметку.
 	if rows := strings.Count(html, "<tr"); rows != strings.Count(html, "</tr>") {
 		t.Errorf("%s: строк таблицы %d, закрыто %d", page, rows, strings.Count(html, "</tr>"))
+	}
+}
+
+// Роли, подставленные ссылкой со страницы «Завести элементы».
+//
+// Без этого человеку пришлось бы разложить полсотни свежих адресов по ролям
+// руками — ровно ту работу, ради избавления от которой генератор и делался.
+// Сохранённое назначение при этом сильнее ссылки: устройство уже настроено, и
+// переписать его переходом по адресу было бы неожиданно.
+func TestAssignFromQuery(t *testing.T) {
+	tmpl := devtmpl.Template{
+		Key: "sample",
+		Roles: []devtmpl.Role{
+			{Key: "ch0", Title: "Канал"},
+			{Key: "temp", Title: "Температура"},
+			{Key: "bad", Title: "Мусор"},
+		},
+	}
+	r := httptest.NewRequest("GET",
+		"/devices/new?template=sample&role_ch0=563:115&role_temp=563:116&role_bad=нет", nil)
+
+	got := assignFromQuery(r, tmpl, map[string]devtmpl.Addr{"ch0": {ID: 758, SubID: 4}})
+
+	if got["ch0"] != (devtmpl.Addr{ID: 758, SubID: 4}) {
+		t.Errorf("сохранённое назначение переписано ссылкой: %v", got["ch0"])
+	}
+	if got["temp"] != (devtmpl.Addr{ID: 563, SubID: 116}) {
+		t.Errorf("роль temp = %v, ожидалось 563:116", got["temp"])
+	}
+	if _, ok := got["bad"]; ok {
+		t.Error("мусор в адресе принят за назначение")
 	}
 }

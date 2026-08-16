@@ -146,7 +146,7 @@ func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			data.Error = err.Error()
 		}
-		data.Roles = s.roleOptions(t, data.Elements, assign)
+		data.Roles = s.roleOptions(t, data.Elements, assignFromQuery(r, t, assign))
 		s.render(w, "device_form", data)
 		return
 	}
@@ -160,9 +160,45 @@ func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 			data.Name = t.Name
 		}
 	}
-	data.Roles = s.roleOptions(data.Selected, data.Elements, nil)
+	data.Roles = s.roleOptions(data.Selected, data.Elements,
+		assignFromQuery(r, data.Selected, nil))
 
 	s.render(w, "device_form", data)
+}
+
+// assignFromQuery достаёт назначения ролей из адреса страницы.
+//
+// Так форма открывается уже заполненной после заведения элементов: страница
+// «Завести элементы» знает, какой адрес какой роли достался, и передаёт это
+// сюда. Иначе человеку пришлось бы разложить полсотни свежих адресов по ролям
+// руками — ровно ту работу, ради избавления от которой всё и делалось.
+//
+// Сохранённое назначение сильнее: устройство уже настроено, и переписать его
+// ссылкой было бы неожиданно.
+func assignFromQuery(r *http.Request, t devtmpl.Template,
+	saved map[string]devtmpl.Addr) map[string]devtmpl.Addr {
+
+	q := r.URL.Query()
+	out := make(map[string]devtmpl.Addr, len(t.Roles))
+	for key, addr := range saved {
+		out[key] = addr
+	}
+
+	for _, role := range t.Roles {
+		if _, ok := out[role.Key]; ok {
+			continue
+		}
+		value := trim(q.Get("role_" + role.Key))
+		if value == "" {
+			continue
+		}
+		id, subID, err := parseAddr(value)
+		if err != nil {
+			continue // мусор в адресе странице не важен: роль просто останется пустой
+		}
+		out[role.Key] = devtmpl.Addr{ID: id, SubID: subID}
+	}
+	return out
 }
 
 // roleOptions сужает список элементов под каждую роль.

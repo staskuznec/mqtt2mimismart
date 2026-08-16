@@ -43,6 +43,7 @@ func buildPages(base string) map[string]*template.Template {
 		"links":         parse("links.html"),
 		"link_form":     parse("link_form.html"),
 		"elements":      parse("elements.html"),
+		"elements_new":  parse("elements_new.html"),
 		"devices":       parse("devices.html"),
 		"device_form":   parse("device_form.html"),
 		"templates":     parse("templates.html"),

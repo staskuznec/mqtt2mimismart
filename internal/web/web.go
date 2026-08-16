@@ -84,6 +84,8 @@ func Handler(log *slog.Logger, db *store.Store, version, basePath string, status
 	mux.HandleFunc("POST /links/preview", s.previewLink)
 	mux.HandleFunc("GET /elements", s.pageElements)
 	mux.HandleFunc("POST /elements/reload", s.reloadElements)
+	mux.HandleFunc("GET /elements/new", s.pageElementsNew)
+	mux.HandleFunc("POST /elements/new", s.genElements)
 	mux.HandleFunc("GET /log", s.pageLog)
 	mux.HandleFunc("POST /update", s.applyUpdate)
 	mux.HandleFunc("POST /update/check", s.checkUpdate)

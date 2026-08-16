@@ -1,0 +1,113 @@
+{{define "content"}}
+<h1>Завести элементы</h1>
+<p class="hint">
+  Профиль знает, какие показания есть у устройства и какой формы значение у
+  каждого; чего ему не хватает — адресов. Здесь шлюз подберёт свободные и
+  соберёт разметку для <span class="mono">logic.xml</span>. Записать файл он не
+  может: тот принадлежит серверу умного дома и открыт только на чтение, —
+  поэтому готовый кусок вы вставляете сами через MimiSetup. Дальше нажмите
+  «перечитать» на странице <a href="elements">Элементы</a>, и роли подставятся
+  по адресам без ручного выбора.
+</p>
+{{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
+
+<form method="post" action="elements/new" class="stack">
+  <label>Профиль <span>— из него берутся роли и формы значений</span>
+    <select name="template" onchange="this.form.submit()">
+      <option value="">— выберите профиль —</option>
+      {{range .Templates}}
+        <option value="{{.Key}}" {{if eq .Key $.Selected.Key}}selected{{end}}>{{.Name}}</option>
+      {{end}}
+    </select></label>
+
+  <label>Модуль (CM) <span>— id, на котором заводятся виртуальные элементы</span>
+    <input type="text" name="module" value="{{if .Module}}{{.Module}}{{end}}"
+           list="modules" required placeholder="563"></label>
+  <datalist id="modules">
+    {{range .Modules}}<option value="{{.}}">{{end}}
+  </datalist>
+  {{if .Modules}}
+    <p class="hint">Уже используются:
+      {{range .Modules}}<span class="mono">{{.}}</span> · {{end}}
+    </p>
+  {{end}}
+
+  <label>Первый sub-id <span>— занятые адреса пропускаются сами</span>
+    <input type="text" name="from_sub" value="{{.FromSub}}"></label>
+
+  <label>Область <span>— куда попадут элементы в дереве дома</span>
+    <input type="text" name="area" value="{{.Area}}" list="areas" required
+           placeholder="Инвертор1"></label>
+  <datalist id="areas">
+    {{range .Areas}}<option value="{{.}}">{{end}}
+  </datalist>
+
+  <label>Приставка к именам <span>— необязательно; с ней элемент назовётся «Инвертор1 Заряд АКБ»</span>
+    <input type="text" name="name_prefix" value="{{.NamePrfx}}"></label>
+
+  <label>Префикс топиков <span>— необязательно; попадёт в комментарии разметки</span>
+    <input type="text" name="prefix" value="{{.Prefix}}" placeholder="microart/inv1"></label>
+
+  {{if .HasChoice}}
+    <fieldset><legend>Какие показания заводить</legend>
+    <p class="hint">
+      Отмечайте только то, что действительно нужно на экране: каждый элемент —
+      это строка в logic.xml и адрес, который потом не переиспользовать.
+    </p>
+    <p class="actions">
+      <button type="button" class="ghost" onclick="mark(true)">отметить все</button>
+      <button type="button" class="ghost" onclick="mark(false)">снять все</button>
+    </p>
+    {{range .Selected.Roles}}
+      <label class="check">
+        <input type="checkbox" name="role" value="{{.Key}}">
+        <span>{{.Title}}{{with .Hint}} <span class="hint">— {{.}}</span>{{end}}</span>
+      </label>
+    {{end}}
+    </fieldset>
+    <button type="submit">Собрать разметку</button>
+  {{end}}
+</form>
+
+{{if .XML}}
+  <h2>Разметка для logic.xml</h2>
+  <p class="hint">
+    Вставьте этот кусок в <span class="mono">logic.xml</span> рядом с другими
+    областями и перезагрузите умный дом.
+  </p>
+  <textarea rows="{{len .Items}}" readonly id="xml" style="min-height:220px">{{.XML}}</textarea>
+  <div class="actions">
+    <button type="button" onclick="copyXML()">Скопировать</button>
+    {{with .Link}}<a href="{{.}}" class="btn ghost">Дальше: устройство с этими адресами</a>{{end}}
+  </div>
+
+  <h2>Что куда пойдёт</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Роль</th><th>Элемент</th><th>Адрес</th><th>Вид</th><th>Топик</th></tr></thead>
+    <tbody>
+    {{range .Items}}
+      <tr>
+        <td>{{.Title}}</td>
+        <td>{{.Name}}</td>
+        <td class="mono">{{.Addr}}</td>
+        <td class="hint">{{.Kind}}</td>
+        <td class="mono hint">{{.Topic}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+{{end}}
+
+<script>
+function mark(on) {
+    document.querySelectorAll('input[name=role]').forEach(function (c) { c.checked = on; });
+}
+function copyXML() {
+    var box = document.getElementById('xml');
+    box.select();
+    document.execCommand('copy');
+}
+</script>
+{{end}}
