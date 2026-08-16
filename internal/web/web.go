@@ -47,6 +47,11 @@ type Status struct {
 	// Reconfigure поднимает соединения заново по свежим настройкам.
 	Reconfigure func()
 
+	// ReloadLogic просит умный дом прислать logic.xml заново: описание дома
+	// приходит только в рукопожатии, и другого способа узнать о новом
+	// элементе нет.
+	ReloadLogic func() error
+
 	// Upgrade скачивает и ставит новую версию, Restart завершает процесс,
 	// чтобы systemd поднял его заново.
 	Upgrade func(context.Context) error

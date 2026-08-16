@@ -225,6 +225,19 @@ func (a *App) ReloadLinks(ctx context.Context) error {
 	return nil
 }
 
+// ReloadLogic просит умный дом прислать описание дома заново.
+//
+// Описание приезжает только в рукопожатии, поэтому «перечитать» — это
+// поздороваться заново. Рвём одно соединение из двух: MQTT не при чём, и
+// дёргать шину ради списка элементов незачем.
+func (a *App) ReloadLogic() error {
+	shsClient, _, _ := a.clients()
+	if shsClient == nil {
+		return errors.New("умный дом не настроен")
+	}
+	return shsClient.Reconnect()
+}
+
 // Run поднимает всё и держит до отмены контекста.
 func (a *App) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
@@ -414,6 +427,7 @@ func (a *App) serve(ctx context.Context) error {
 	status.CheckNow = a.update.Check
 	status.Log = a.ring.Entries
 	status.Reconfigure = a.Reconfigure
+	status.ReloadLogic = a.ReloadLogic
 	status.Upgrade = a.update.Apply
 	status.Restart = a.Restart
 

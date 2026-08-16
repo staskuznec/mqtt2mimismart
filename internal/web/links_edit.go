@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -447,13 +448,15 @@ func (s *server) reload(r *http.Request) {
 type elementsData struct {
 	Title, Nav string
 	Elements   []logic.Element
-	Reloading  bool // идёт переподключение ради свежего logic.xml
+	Reloading  bool   // идёт переподключение ради свежего logic.xml
+	Error      string // почему перечитать не вышло
 }
 
 func (s *server) pageElements(w http.ResponseWriter, r *http.Request) {
 	data := elementsData{
 		Title: "Элементы", Nav: "elements",
 		Reloading: r.URL.Query().Get("reloading") != "",
+		Error:     r.URL.Query().Get("error"),
 	}
 	if s.status.Elements != nil {
 		data.Elements = s.status.Elements()
@@ -468,10 +471,17 @@ func (s *server) pageElements(w http.ResponseWriter, r *http.Request) {
 // видит: для него ничего не изменилось. Единственный способ получить свежее
 // описание — поздороваться заново, что и делает переподключение.
 func (s *server) reloadElements(w http.ResponseWriter, r *http.Request) {
-	if s.status.Reconfigure != nil {
-		s.status.Reconfigure()
+	if s.status.ReloadLogic == nil {
+		s.redirect(w, r, "/elements?error="+url.QueryEscape("шлюз ещё не настроен"))
+		return
 	}
-	http.Redirect(w, r, "elements?reloading=1", http.StatusSeeOther)
+	if err := s.status.ReloadLogic(); err != nil {
+		// Отказ показываем на самой странице: молча вернуть прежний список
+		// значит соврать — человек будет искать элемент, которого не приехало.
+		s.redirect(w, r, "/elements?error="+url.QueryEscape(err.Error()))
+		return
+	}
+	s.redirect(w, r, "/elements?reloading=1")
 }
 
 // ---------------------------------------------------------------- Общее
