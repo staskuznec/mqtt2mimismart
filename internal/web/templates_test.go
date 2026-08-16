@@ -2,7 +2,9 @@ package web
 
 import (
 	"bytes"
+	"io"
 	"io/fs"
+	"log/slog"
 	"net/http/httptest"
 	"regexp"
 	"strings"
@@ -418,5 +420,20 @@ func TestAssignFromQuery(t *testing.T) {
 	}
 	if _, ok := got["bad"]; ok {
 		t.Error("мусор в адресе принят за назначение")
+	}
+}
+
+// Страницы шлюза живые: список элементов меняется, когда правят logic.xml.
+// Ответ без запрета кэширования браузер и прокси перед панелью умного дома
+// вправе показать повторно — и человек ищет в форме устройства только что
+// заведённый элемент, которого там «нет».
+func TestPagesAreNotCached(t *testing.T) {
+	s := &server{pages: buildPages(""), log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	rec := httptest.NewRecorder()
+
+	s.render(rec, "elements", elementsData{Title: "Элементы", Nav: "elements"})
+
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, ожидалось no-store", got)
 	}
 }

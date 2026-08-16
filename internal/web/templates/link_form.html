@@ -6,6 +6,15 @@
 </p>
 
 {{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
+{{if .Reloading}}
+  <div class="msg ok">Здороваемся с умным домом заново — обновите страницу через
+    несколько секунд.</div>
+{{end}}
+
+<form method="post" action="elements/reload" class="toolbar">
+  <input type="hidden" name="back" value="{{.Back}}">
+  <button type="submit" class="ghost">Перечитать logic.xml — сейчас {{len .Elements}} элементов</button>
+</form>
 
 <form method="post" action="links/save" class="stack">
   <input type="hidden" name="id" value="{{.Link.ID}}">

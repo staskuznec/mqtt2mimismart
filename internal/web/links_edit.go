@@ -37,6 +37,11 @@ type linkFormData struct {
 	// Values показывается таблицей значений в виде «строка на пару»: править
 	// JSON руками в веб-форме — издевательство.
 	ValuesText string
+
+	// Back — куда вернуться после «перечитать»: элемент выбирают и здесь, и
+	// уходить со страницы ради обновления списка незачем.
+	Back      string
+	Reloading bool
 }
 
 // elementOption — элемент умного дома в выпадающем списке.
@@ -125,6 +130,11 @@ func (s *server) pageLinkForm(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Elements = s.elementOptions(data.Link.Addr())
 	data.Topics = s.knownTopics()
+	data.Back = r.URL.RequestURI()
+	if s.base != "" {
+		data.Back = strings.TrimPrefix(data.Back, s.base)
+	}
+	data.Reloading = r.URL.Query().Get("reloading") != ""
 	s.render(w, "link_form", data)
 }
 
@@ -464,6 +474,15 @@ func (s *server) pageElements(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "elements", data)
 }
 
+// addParam приписывает параметр к адресу, у которого уже может быть строка
+// запроса: форма устройства возвращает на свой адрес с идентификатором.
+func addParam(path, param string) string {
+	if strings.Contains(path, "?") {
+		return "&" + param
+	}
+	return "?" + param
+}
+
 // reloadElements перечитывает logic.xml.
 //
 // Описание дома приезжает один раз — в рукопожатии, — и пока соединение живо,
@@ -471,17 +490,25 @@ func (s *server) pageElements(w http.ResponseWriter, r *http.Request) {
 // видит: для него ничего не изменилось. Единственный способ получить свежее
 // описание — поздороваться заново, что и делает переподключение.
 func (s *server) reloadElements(w http.ResponseWriter, r *http.Request) {
+	// Куда вернуться. Перечитывают описание не только со страницы «Элементы»:
+	// чаще всего замечают нехватку как раз в форме устройства, и уводить
+	// оттуда — значит заставить заполнять её заново.
+	back := trim(r.PostFormValue("back"))
+	if back == "" || !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") {
+		back = "/elements"
+	}
+
 	if s.status.ReloadLogic == nil {
-		s.redirect(w, r, "/elements?error="+url.QueryEscape("шлюз ещё не настроен"))
+		s.redirect(w, r, back+addParam(back, "error=")+url.QueryEscape("шлюз ещё не настроен"))
 		return
 	}
 	if err := s.status.ReloadLogic(); err != nil {
 		// Отказ показываем на самой странице: молча вернуть прежний список
 		// значит соврать — человек будет искать элемент, которого не приехало.
-		s.redirect(w, r, "/elements?error="+url.QueryEscape(err.Error()))
+		s.redirect(w, r, back+addParam(back, "error=")+url.QueryEscape(err.Error()))
 		return
 	}
-	s.redirect(w, r, "/elements?reloading=1")
+	s.redirect(w, r, back+addParam(back, "reloading=1"))
 }
 
 // ---------------------------------------------------------------- Общее

@@ -68,6 +68,13 @@ func (s *server) render(w http.ResponseWriter, page string, data any) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	// Страницы шлюза живые: список элементов, топики, счётчики связок меняются
+	// каждую минуту. Ответ без заголовков кэширования браузер и прокси перед
+	// панелью умного дома вправе показать повторно — и человек ищет в форме
+	// устройства только что заведённый элемент, которого там «нет».
+	w.Header().Set("Cache-Control", "no-store")
+
 	if err := tmpl.ExecuteTemplate(w, "layout", data); err != nil {
 		// Часть страницы уже ушла в сокет, менять код поздно.
 		s.log.Error("отрисовка страницы", "page", page, "err", err)

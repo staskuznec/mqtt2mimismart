@@ -81,6 +81,12 @@ type deviceFormData struct {
 	AreaParent string // внутрь какой области класть новую; пусто — верхний уровень
 	FromSub    uint8
 
+	// Back — куда вернуться после «перечитать»: форму заполняют долго, и
+	// уводить с неё ради обновления списка элементов нельзя.
+	Back        string
+	Reloading   bool
+	ReloadError string
+
 	// XML — разметка для logic.xml, собранная при сохранении, и что в неё
 	// вошло. Показывается после развёртывания: вставить её должен человек.
 	XML     string
@@ -132,6 +138,12 @@ func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data.Prefix = r.URL.Query().Get("prefix")
+	data.Back = r.URL.RequestURI()
+	if s.base != "" {
+		data.Back = strings.TrimPrefix(data.Back, s.base)
+	}
+	data.Reloading = r.URL.Query().Get("reloading") != ""
+	data.ReloadError = r.URL.Query().Get("error")
 	data.Prefixes = s.prefixOptions(r)
 	data.Elements = s.elementOptions("")
 

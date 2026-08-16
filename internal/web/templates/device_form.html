@@ -18,7 +18,18 @@
   <input type="hidden" name="prefix" value="{{.Prefix}}">
 </form>
 
+{{if .Reloading}}
+  <div class="msg ok">Здороваемся с умным домом заново — обновите страницу через
+    несколько секунд, и в списках появятся свежие элементы.</div>
+{{end}}
+{{if .ReloadError}}<div class="msg bad">Перечитать не вышло: {{.ReloadError}}</div>{{end}}
+
 {{if .HasChoice}}
+  <form method="post" action="elements/reload" class="toolbar">
+    <input type="hidden" name="back" value="{{.Back}}">
+    <button type="submit" class="ghost">Перечитать logic.xml — сейчас {{len .Elements}} элементов</button>
+  </form>
+
   {{with .Selected.Note}}<p class="hint" style="max-width:640px">{{.}}</p>{{end}}
 
   <form method="post" action="devices/apply" class="stack">
