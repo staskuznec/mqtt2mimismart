@@ -54,7 +54,8 @@ type App struct {
 	// разбирать три сотни элементов на каждой отрисовке страницы незачем.
 	logicMu    sync.Mutex
 	logicHouse logic.House
-	logicSum   [32]byte // отпечаток описания, по которому виден его пересмотр
+	logicSum   [32]byte        // отпечаток описания, по которому виден его пересмотр
+	logicAddrs map[string]bool // адреса из описания: движок сверяется на каждом сообщении
 }
 
 // Elements отдаёт элементы умного дома из logic.xml.
@@ -89,10 +90,31 @@ func (a *App) Elements() []logic.Element {
 			return a.logicHouse.Elements
 		}
 		a.logicHouse, a.logicSum = house, sum
+		a.logicAddrs = make(map[string]bool, len(house.Elements))
+		for _, e := range house.Elements {
+			a.logicAddrs[e.Addr()] = true
+		}
 		a.log.Info("логика умного дома разобрана",
 			"элементов", len(house.Elements), "областей", len(house.Areas()))
 	}
 	return a.logicHouse.Elements
+}
+
+// knownAddr сообщает, есть ли элемент с таким адресом в описании дома.
+//
+// Пока описание не приехало, отвечаем «есть»: связь с умным домом могла
+// оборваться, и запрещать работу на этом основании — значит останавливать
+// исправный объект.
+func (a *App) knownAddr(addr string) bool {
+	// Обращение к Elements держит разбор свежим: описание перечитывается по
+	// кнопке и при переподключении, а набор адресов собирается там же.
+	if len(a.Elements()) == 0 {
+		return true
+	}
+
+	a.logicMu.Lock()
+	defer a.logicMu.Unlock()
+	return a.logicAddrs[addr]
 }
 
 // New собирает демон. Клиенты создаются только при заполненных настройках:
@@ -140,9 +162,16 @@ func (a *App) connect(ctx context.Context) error {
 		return err
 	}
 
+	engine := link.NewEngine(shsClient, mqttClient, a.log.With("component", "engine"))
+
+	// Движок обязан знать, какие адреса вообще существуют: связка переживает
+	// правку logic.xml, и после неё пишет в никуда — или, хуже, в чужой
+	// элемент, заведённый по освободившемуся адресу.
+	engine.SetKnownAddrs(a.knownAddr)
+
 	a.mu.Lock()
 	a.shs, a.mqtt = shsClient, mqttClient
-	a.engine = link.NewEngine(shsClient, mqttClient, a.log.With("component", "engine"))
+	a.engine = engine
 	a.mu.Unlock()
 
 	return a.ReloadLinks(ctx)

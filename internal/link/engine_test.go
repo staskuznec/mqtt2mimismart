@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 
@@ -391,5 +392,42 @@ func TestOutAlwaysPassesToggle(t *testing.T) {
 
 	if msgs := mq.all(); len(msgs) != 2 {
 		t.Errorf("опубликовано %d сообщений, ожидалось 2 — второе нажатие проглочено", len(msgs))
+	}
+}
+
+// Связка живёт в базе шлюза и переживает правку logic.xml: элемент удалили или
+// перенумеровали, а она осталась. Писать в такой адрес нельзя — в лучшем случае
+// пакет пропадёт, в худшем по освободившемуся адресу успели завести другой
+// элемент, и туда поедут чужие значения.
+func TestEngineSkipsMissingElement(t *testing.T) {
+	sender := &fakeSender{}
+	e := NewEngine(sender, &fakePublisher{}, testLogger())
+	e.SetLinks([]Link{{
+		ID: 1, Enabled: true, Direction: In, Name: "Заряд",
+		Topic: "microart/inv1/bat/0/C_100_remain", Encode: EncodeText,
+		TargetID: 563, TargetSubID: 160,
+	}})
+
+	// Описание дома есть, но этого адреса в нём нет.
+	e.SetKnownAddrs(func(addr string) bool { return addr == "563:116" })
+
+	e.OnMessage(context.Background(), "microart/inv1/bat/0/C_100_remain", []byte("88"))
+
+	if n := sender.count(); n != 0 {
+		t.Fatalf("отправлено %d значений в несуществующий элемент", n)
+	}
+	st := e.Stats()[1]
+	if st.Errors != 1 {
+		t.Errorf("ошибок %d, ожидалась одна", st.Errors)
+	}
+	if !strings.Contains(st.LastError, "563:160") {
+		t.Errorf("в ошибке нет адреса: %q", st.LastError)
+	}
+
+	// Элемент завели обратно — связка работает как ни в чём не бывало.
+	e.SetKnownAddrs(func(addr string) bool { return true })
+	e.OnMessage(context.Background(), "microart/inv1/bat/0/C_100_remain", []byte("88"))
+	if sender.count() != 1 {
+		t.Errorf("после появления элемента отправлено %d значений", sender.count())
 	}
 }

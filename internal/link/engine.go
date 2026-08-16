@@ -74,6 +74,23 @@ type Engine struct {
 	lastOut map[int64]string
 
 	stats map[int64]*Stats
+
+	// known сообщает, есть ли элемент с таким адресом в описании дома.
+	//
+	// Нужна, чтобы не писать в пустоту: элемент можно удалить из logic.xml
+	// или перенумеровать, а связка останется — она живёт в базе шлюза, и
+	// умный дом о ней не знает. Пакеты при этом уходят исправно, ошибки нет,
+	// и заметить это можно только по неработающему показанию. Хуже, если по
+	// тому же адресу заведут другой элемент: туда поедут чужие значения.
+	//
+	// Пусто — проверять нечем: описание ещё не приехало, и запрещать работу
+	// на этом основании нельзя.
+	known func(addr string) bool
+
+	// reported — по каким связкам об отсутствии элемента уже сказано.
+	// Иначе строка про один и тот же адрес уходила бы в журнал на каждом
+	// сообщении с шины.
+	reported map[int64]bool
 }
 
 // echoEntry — что и когда мы сами записали в элемент.
@@ -86,15 +103,37 @@ type echoEntry struct {
 // они меняются в вебе и перечитываются без перезапуска демона.
 func NewEngine(sh Sender, mq Publisher, log *slog.Logger) *Engine {
 	return &Engine{
-		log:     log,
-		sh:      sh,
-		mq:      mq,
-		out:     make(map[string][]Link),
-		last:    make(map[int64]string),
-		lastOut: make(map[int64]string),
-		echo:    make(map[string]echoEntry),
-		stats:   make(map[int64]*Stats),
+		log:      log,
+		sh:       sh,
+		mq:       mq,
+		out:      make(map[string][]Link),
+		last:     make(map[int64]string),
+		lastOut:  make(map[int64]string),
+		echo:     make(map[string]echoEntry),
+		stats:    make(map[int64]*Stats),
+		reported: make(map[int64]bool),
 	}
+}
+
+// SetKnownAddrs задаёт проверку адреса по описанию дома.
+//
+// Передавать функцию, а не готовый набор: logic.xml перечитывается по кнопке
+// и меняется при переподключении, и движок должен видеть свежее описание, а
+// не снимок, сделанный при запуске.
+func (e *Engine) SetKnownAddrs(known func(addr string) bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.known = known
+	e.reported = make(map[int64]bool)
+}
+
+// elementExists проверяет, есть ли элемент связки в описании дома.
+func (e *Engine) elementExists(l Link) bool {
+	e.mu.RLock()
+	known := e.known
+	e.mu.RUnlock()
+
+	return known == nil || known(l.Addr())
 }
 
 // SetLinks заменяет набор связок целиком.
@@ -172,6 +211,27 @@ func (e *Engine) OnMessage(ctx context.Context, topic string, payload []byte) {
 // applyIn проводит одну связку направления In.
 func (e *Engine) applyIn(ctx context.Context, l Link, payload []byte) {
 	e.count(l.ID, func(s *Stats) { s.Matched++ })
+
+	// Элемента может не быть вовсе: связка живёт в базе шлюза и переживает
+	// правку logic.xml. Отправлять в такой адрес незачем — в лучшем случае
+	// пакет пропадёт, в худшем по этому адресу успели завести другой элемент.
+	if !e.elementExists(l) {
+		e.mu.Lock()
+		first := !e.reported[l.ID]
+		e.reported[l.ID] = true
+		e.mu.Unlock()
+
+		if first {
+			e.log.Warn("элемента нет в описании дома, связка ничего не пишет",
+				"link", l.Title(), "addr", l.Addr(),
+				"hint", "проверьте logic.xml или переназначьте элемент в устройстве")
+		}
+		e.count(l.ID, func(s *Stats) {
+			s.Errors++
+			s.LastError = "элемента " + l.Addr() + " нет в logic.xml"
+		})
+		return
+	}
 
 	wire, err := l.ToWire(payload)
 	if err != nil {
