@@ -39,7 +39,7 @@ func (s *Store) ApplyTemplate(ctx context.Context, d Device, t devtmpl.Template,
 	}
 
 	if strings.TrimSpace(d.Name) == "" {
-		d.Name = t.Name
+		d.Name = s.uniqueDeviceName(ctx, t.Name, d.TopicPrefix)
 	}
 	d.Model, d.Template = t.Model, t.Key
 
@@ -52,6 +52,28 @@ func (s *Store) ApplyTemplate(ctx context.Context, d Device, t devtmpl.Template,
 		return 0, err
 	}
 	return deviceID, nil
+}
+
+// uniqueDeviceName подбирает название устройству, которому его не дали.
+//
+// Название профиля само по себе не годится: два одинаковых инвертора получают
+// одно и то же имя, и потом ни в списке связок, ни в журнале не понять, о
+// каком из них речь. Поэтому у второго и следующих к названию добавляется
+// префикс топиков — он у каждого свой по определению.
+func (s *Store) uniqueDeviceName(ctx context.Context, name, prefix string) string {
+	if name == "" {
+		return prefix
+	}
+	devices, err := s.Devices(ctx)
+	if err != nil {
+		return name
+	}
+	for _, d := range devices {
+		if d.Name == name {
+			return name + " · " + prefix
+		}
+	}
+	return name
 }
 
 // createTemplateLinks разворачивает связки шаблона на устройстве.

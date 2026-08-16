@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/staskuznec/mqtt2mimismart/internal/devtmpl"
 )
 
 // open создаёт временную базу для теста.
@@ -320,6 +322,53 @@ func TestMigrationsAreOrderedAndUnique(t *testing.T) {
 	for i := 1; i < len(all); i++ {
 		if all[i].version <= all[i-1].version {
 			t.Errorf("миграции не по порядку: %d идёт после %d", all[i].version, all[i-1].version)
+		}
+	}
+}
+
+// Два одинаковых инвертора — самый частый случай на объекте, и название
+// профиля их не различает: в списке связок и в журнале оба выглядят одинаково.
+// Второму и следующим дописывается префикс топиков, он у каждого свой.
+func TestApplyTemplateNamesDevicesApart(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	tmpl := devtmpl.Template{
+		Key: "microart", Name: "МикроАрт МАП", Model: "map",
+		Roles: []devtmpl.Role{{Key: "soc", Title: "Заряд"}},
+		Links: []devtmpl.LinkSpec{{
+			Name: "Заряд", Direction: "in", Role: "soc",
+			Topic: "{{prefix}}/bat/0/C_100_remain", Encode: "text",
+		}},
+	}
+	assign := map[string]devtmpl.Addr{"soc": {ID: 563, SubID: 114}}
+
+	for _, prefix := range []string{"microart/inv1", "microart/inv2"} {
+		if _, err := s.ApplyTemplate(ctx, Device{TopicPrefix: prefix}, tmpl, assign); err != nil {
+			t.Fatalf("ApplyTemplate %s: %v", prefix, err)
+		}
+	}
+
+	devices, err := s.Devices(ctx)
+	if err != nil {
+		t.Fatalf("Devices: %v", err)
+	}
+	if len(devices) != 2 {
+		t.Fatalf("устройств %d, ожидалось 2", len(devices))
+	}
+	if devices[0].Name == devices[1].Name {
+		t.Errorf("оба устройства названы «%s» — их не различить", devices[0].Name)
+	}
+
+	// Имя устройства подставляется связкам при чтении: без него журнал не
+	// говорит, с каким из инверторов работает движок.
+	links, err := s.Links(ctx)
+	if err != nil {
+		t.Fatalf("Links: %v", err)
+	}
+	for _, l := range links {
+		if l.Device == "" {
+			t.Errorf("связке %q не подставлено имя устройства", l.Name)
 		}
 	}
 }

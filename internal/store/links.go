@@ -41,7 +41,7 @@ func (s *Store) Links(ctx context.Context) ([]link.Link, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: чтение связок: %w", err)
 	}
-	return out, nil
+	return s.withDeviceNames(ctx, out), nil
 }
 
 // Link читает одну связку.
@@ -51,7 +51,46 @@ func (s *Store) Link(ctx context.Context, id int64) (link.Link, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return link.Link{}, fmt.Errorf("%w: связка %d", ErrNotFound, id)
 	}
-	return l, err
+	if err != nil {
+		return l, err
+	}
+	filled := s.withDeviceNames(ctx, []link.Link{l})
+	return filled[0], nil
+}
+
+// withDeviceNames подставляет связкам название их устройства.
+//
+// Имя нужно всюду, где связку показывают человеку: на объекте с тремя
+// одинаковыми инверторами «Ток разряда АКБ» в журнале не отличить от такого же
+// с соседнего. В базе оно не дублируется — устройство можно переименовать, и
+// связки подхватят новое имя сами.
+func (s *Store) withDeviceNames(ctx context.Context, links []link.Link) []link.Link {
+	need := false
+	for _, l := range links {
+		if l.DeviceID != 0 {
+			need = true
+			break
+		}
+	}
+	if !need {
+		return links
+	}
+
+	devices, err := s.Devices(ctx)
+	if err != nil {
+		// Имя — украшение: без него связки работают, и ронять чтение из-за
+		// него неправильно.
+		return links
+	}
+	names := make(map[int64]string, len(devices))
+	for _, d := range devices {
+		names[d.ID] = d.Name
+	}
+
+	for i := range links {
+		links[i].Device = names[links[i].DeviceID]
+	}
+	return links
 }
 
 // LinksByDevice читает связки одного устройства.
@@ -71,7 +110,10 @@ func (s *Store) LinksByDevice(ctx context.Context, deviceID int64) ([]link.Link,
 		}
 		out = append(out, l)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return s.withDeviceNames(ctx, out), nil
 }
 
 // CreateLink сохраняет новую связку и возвращает её идентификатор.
