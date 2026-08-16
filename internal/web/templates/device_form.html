@@ -61,13 +61,14 @@
     </p>
 
     <label class="check">
-      <input type="checkbox" id="create-on" onchange="toggleCreate()">
+      <input type="checkbox" name="create" id="create-on" {{if .CreateOn}}checked{{end}}
+             onchange="toggleCreate()">
       <span>Создать элементы в умном доме
         <span class="hint">— в списке ролей появится «создать элемент»: шлюз подберёт
         свободный адрес и соберёт разметку для logic.xml</span></span>
     </label>
 
-    <div id="create-box" style="display:none">
+    <div id="create-box" style="display:{{if .CreateOn}}block{{else}}none{{end}}">
       <label>Модуль (CM) <span>— на нём заводятся виртуальные элементы</span>
         <select name="module">
           {{range .Modules}}<option value="{{.}}" {{if eq . $.Module}}selected{{end}}>{{.}}</option>{{end}}
@@ -104,7 +105,8 @@
           из {{len $.Elements}}){{end}}</span>
         <select name="role_{{.Key}}" {{if .Required}}required{{end}}>
           <option value="">— не нужно —</option>
-          <option value="new" class="create-opt" hidden>— создать элемент —</option>
+          <option value="new" class="create-opt" {{if not $.CreateOn}}hidden{{end}}
+                  {{if eq .Selected "new"}}selected{{end}}>— создать элемент —</option>
           {{$sel := .Selected}}
           {{range .Elements}}<option value="{{.Addr}}" {{if eq .Addr $sel}}selected{{end}}>{{.Label}} · {{.Addr}}</option>{{end}}
         </select></label>

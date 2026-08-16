@@ -41,11 +41,11 @@ func TestFreeSubIDsRefusesWhenNoRoom(t *testing.T) {
 	}
 }
 
-// Начинаем со следующего за последним занятым: дырки в нумерации обычно
-// оставлены нарочно, под дополнение уже заведённой области.
+// Подсказываем первый свободный адрес: занятые дальше всё равно пропускаются,
+// а отсчёт от последнего занятого упирался в конец модуля на живом объекте.
 func TestNextFreeSubID(t *testing.T) {
-	if got := house().NextFreeSubID(563); got != 115 {
-		t.Errorf("подсказан адрес %d, ожидался 115", got)
+	if got := house().NextFreeSubID(563); got != 0 {
+		t.Errorf("подсказан адрес %d, ожидался 0", got)
 	}
 	if got := house().NextFreeSubID(999); got != 0 {
 		t.Errorf("на пустом модуле подсказан адрес %d, ожидался 0", got)
@@ -122,6 +122,53 @@ func TestRenderAreaIsValidXML(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("в разметке нет строки:\n%s\nполучилось:\n%s", want, out)
+		}
+	}
+}
+
+// Отсчёт от первого свободного, а не от последнего занятого.
+//
+// На объекте у модуля были элементы вплоть до 250-го адреса, и заведение
+// падало с «свободно 5, нужно 10», хотя между областями пустовало полсотни
+// адресов. Разрывы в нумерации — обычное дело, и заполнять их безопасно:
+// адрес с областью никак не связан.
+func TestNextFreeSubIDFillsGaps(t *testing.T) {
+	h := House{Elements: []Element{
+		{ID: 563, SubID: 0}, {ID: 563, SubID: 1},
+		{ID: 563, SubID: 100}, {ID: 563, SubID: 250},
+	}}
+
+	if got := h.NextFreeSubID(563); got != 2 {
+		t.Errorf("подсказан адрес %d, ожидался 2 — первый свободный", got)
+	}
+
+	// Десять адресов начиная со второго находятся сразу.
+	subs, err := h.FreeSubIDs(563, 10, 2)
+	if err != nil {
+		t.Fatalf("FreeSubIDs: %v", err)
+	}
+	if len(subs) != 10 || subs[0] != 2 {
+		t.Errorf("выдано %v", subs)
+	}
+}
+
+// Когда с указанного места мест не хватает, отказ обязан сказать, сколько
+// свободно на модуле целиком и с какого адреса начинать: иначе «свободно 5,
+// нужно 10» выглядит как «модуль кончился», хотя это не так.
+func TestFreeSubIDsSuggestsWhereToStart(t *testing.T) {
+	elements := make([]Element, 0, 60)
+	for sub := 100; sub < 160; sub++ {
+		elements = append(elements, Element{ID: 563, SubID: uint8(sub)})
+	}
+	h := House{Elements: elements}
+
+	_, err := h.FreeSubIDs(563, 10, 250)
+	if err == nil {
+		t.Fatal("отказа не было")
+	}
+	for _, want := range []string{"всего на модуле свободно", "начните с 0"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("в отказе нет «%s»: %v", want, err)
 		}
 	}
 }

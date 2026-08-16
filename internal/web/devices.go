@@ -87,6 +87,11 @@ type deviceFormData struct {
 	Reloading   bool
 	ReloadError string
 
+	// CreateOn — включена ли галочка «создать элементы». Нужна после отказа:
+	// иначе блок с модулем и областью схлопывается, а выбранные «создать»
+	// сбрасываются — и полсотни ролей приходится размечать заново.
+	CreateOn bool
+
 	// XML — разметка для logic.xml, собранная при сохранении, и что в неё
 	// вошло. Показывается после развёртывания: вставить её должен человек.
 	XML     string
@@ -329,7 +334,7 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 		deviceID, _ = strconv.ParseInt(id, 10, 64)
 	}
 
-	fail := func(msg string, assign map[string]devtmpl.Addr) {
+	fail := func(msg string, chosen map[string]string) {
 		house := s.house()
 		data := deviceFormData{
 			Title: "Новое устройство", Nav: "devices",
@@ -341,6 +346,8 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 			Module:     moduleFromForm(r),
 			Area:       trim(r.PostFormValue("area")),
 			AreaParent: trim(r.PostFormValue("area_parent")),
+			FromSub:    subRaw(r),
+			CreateOn:   r.PostFormValue("create") != "",
 		}
 		if deviceID != 0 {
 			data.Title = "Настройка устройства"
@@ -356,7 +363,15 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 		}
 		if t, err := s.db.Template(r.Context(), key); err == nil {
 			data.Selected, data.HasChoice = t, true
-			data.Roles = s.roleOptions(t, data.Elements, assign)
+			data.Roles = s.roleOptions(t, data.Elements, nil)
+
+			// Возвращаем форму ровно в том виде, в каком её отправили:
+			// «создать» тоже назначение, и терять его при отказе нельзя.
+			for i := range data.Roles {
+				if v := chosen[data.Roles[i].Key]; v != "" {
+					data.Roles[i].Selected = v
+				}
+			}
 		}
 		s.render(w, "device_form", data)
 	}
@@ -371,10 +386,14 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 	// не назначайте их. Значение "new" означает, что элемента в умном доме
 	// ещё нет и его надо завести.
 	assign := make(map[string]devtmpl.Addr)
+	chosen := make(map[string]string, len(tmpl.Roles))
 	var create []devtmpl.Role
 
 	for _, role := range tmpl.Roles {
 		addr := trim(r.PostFormValue("role_" + role.Key))
+		if addr != "" {
+			chosen[role.Key] = addr
+		}
 		switch addr {
 		case "":
 			continue
@@ -384,7 +403,7 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 		}
 		id, subID, err := parseAddr(addr)
 		if err != nil {
-			fail("роль «"+role.Title+"»: "+err.Error(), assign)
+			fail("роль «"+role.Title+"»: "+err.Error(), chosen)
 			return
 		}
 		assign[role.Key] = devtmpl.Addr{ID: id, SubID: subID}
@@ -399,17 +418,17 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 		area := trim(r.PostFormValue("area"))
 		switch {
 		case module == 0:
-			fail("не выбран модуль (CM), на котором заводить элементы", assign)
+			fail("не выбран модуль (CM), на котором заводить элементы", chosen)
 			return
 		case area == "":
-			fail("не указана область: в неё попадут заведённые элементы", assign)
+			fail("не указана область: в неё попадут заведённые элементы", chosen)
 			return
 		}
 
 		house := s.house()
 		subs, err := house.FreeSubIDs(module, len(create), subFromForm(r, house, module))
 		if err != nil {
-			fail(err.Error(), assign)
+			fail(err.Error(), chosen)
 			return
 		}
 
@@ -436,7 +455,7 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 		_, err = s.db.ApplyTemplate(r.Context(), device, tmpl, assign)
 	}
 	if err != nil {
-		fail(err.Error(), assign)
+		fail(err.Error(), chosen)
 		return
 	}
 
@@ -489,6 +508,16 @@ func moduleFromForm(r *http.Request) uint16 {
 		return 0
 	}
 	return uint16(id)
+}
+
+// subRaw возвращает то, что человек написал в поле «первый sub-id», — для
+// возврата формы после отказа. Пусто так и остаётся пустым: это «авто».
+func subRaw(r *http.Request) uint8 {
+	sub, err := strconv.ParseUint(trim(r.PostFormValue("from_sub")), 10, 8)
+	if err != nil {
+		return 0
+	}
+	return uint8(sub)
 }
 
 // subFromForm читает, с какого адреса начинать. Пусто — со следующего за
