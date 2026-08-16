@@ -3,8 +3,22 @@
 <p class="hint">
   Из logic.xml, который сервер присылает при подключении. Всего {{len .Elements}}.
   Отдельный путь к файлу настраивать не нужно — список всегда соответствует
-  тому серверу, с которым шлюз работает на самом деле.
+  тому серверу, с которым шлюз работает на самом деле. Описание приезжает
+  один раз, в рукопожатии: добавили элемент в logic.xml — нажмите «перечитать»,
+  иначе шлюз о нём не узнает.
 </p>
+
+{{if .Reloading}}
+  <div class="msg ok">Здороваемся с умным домом заново — список обновится через
+    несколько секунд.</div>
+  <script>setTimeout(function () { location.href = "elements"; }, 4000);</script>
+{{end}}
+
+<div class="toolbar">
+  <form method="post" action="elements/reload">
+    <button type="submit" class="ghost">Перечитать logic.xml</button>
+  </form>
+</div>
 
 {{if .Elements}}
 <div class="tablewrap">

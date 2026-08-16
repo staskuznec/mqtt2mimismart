@@ -447,14 +447,31 @@ func (s *server) reload(r *http.Request) {
 type elementsData struct {
 	Title, Nav string
 	Elements   []logic.Element
+	Reloading  bool // идёт переподключение ради свежего logic.xml
 }
 
-func (s *server) pageElements(w http.ResponseWriter, _ *http.Request) {
-	data := elementsData{Title: "Элементы", Nav: "elements"}
+func (s *server) pageElements(w http.ResponseWriter, r *http.Request) {
+	data := elementsData{
+		Title: "Элементы", Nav: "elements",
+		Reloading: r.URL.Query().Get("reloading") != "",
+	}
 	if s.status.Elements != nil {
 		data.Elements = s.status.Elements()
 	}
 	s.render(w, "elements", data)
+}
+
+// reloadElements перечитывает logic.xml.
+//
+// Описание дома приезжает один раз — в рукопожатии, — и пока соединение живо,
+// сервер его не переприсылает. Добавленный в logic.xml элемент шлюз поэтому не
+// видит: для него ничего не изменилось. Единственный способ получить свежее
+// описание — поздороваться заново, что и делает переподключение.
+func (s *server) reloadElements(w http.ResponseWriter, r *http.Request) {
+	if s.status.Reconfigure != nil {
+		s.status.Reconfigure()
+	}
+	http.Redirect(w, r, "elements?reloading=1", http.StatusSeeOther)
 }
 
 // ---------------------------------------------------------------- Общее
