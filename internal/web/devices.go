@@ -74,11 +74,12 @@ type deviceFormData struct {
 
 	// Заведение элементов прямо здесь: под роль, которой в умном доме ещё
 	// нечего назначить, шлюз подберёт свободный адрес и соберёт разметку.
-	Modules []uint16 // модули (CM), которые уже есть в logic.xml
-	Areas   []string
-	Module  uint16
-	Area    string
-	FromSub uint8
+	Modules    []uint16 // модули (CM), которые уже есть в logic.xml
+	Areas      []string
+	Module     uint16
+	Area       string
+	AreaParent string // внутрь какой области класть новую; пусто — верхний уровень
+	FromSub    uint8
 
 	// XML — разметка для logic.xml, собранная при сохранении, и что в неё
 	// вошло. Показывается после развёртывания: вставить её должен человек.
@@ -138,7 +139,6 @@ func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 	data.Modules = house.ModuleIDs()
 	if len(data.Modules) > 0 {
 		data.Module = data.Modules[0]
-		data.FromSub = house.NextFreeSubID(data.Module)
 	}
 	data.Areas = house.Areas()
 
@@ -322,12 +322,13 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 		data := deviceFormData{
 			Title: "Новое устройство", Nav: "devices",
 			Error: msg, Name: name, Prefix: prefix, DeviceID: deviceID,
-			Prefixes: s.prefixOptions(r),
-			Elements: s.elementOptions(""),
-			Modules:  house.ModuleIDs(),
-			Areas:    house.Areas(),
-			Module:   moduleFromForm(r),
-			Area:     trim(r.PostFormValue("area")),
+			Prefixes:   s.prefixOptions(r),
+			Elements:   s.elementOptions(""),
+			Modules:    house.ModuleIDs(),
+			Areas:      house.Areas(),
+			Module:     moduleFromForm(r),
+			Area:       trim(r.PostFormValue("area")),
+			AreaParent: trim(r.PostFormValue("area_parent")),
 		}
 		if deviceID != 0 {
 			data.Title = "Настройка устройства"
@@ -436,7 +437,8 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 		area := trim(r.PostFormValue("area"))
 		data := deviceCreatedData{
 			Title: "Элементы заведены", Nav: "devices",
-			Device: name, Area: area, XML: logic.RenderArea(area, items),
+			Device: name, Area: area, Parent: trim(r.PostFormValue("area_parent")),
+			XML: logic.RenderArea(area, items),
 		}
 		for i, item := range items {
 			data.Created = append(data.Created, createdRow{
@@ -456,6 +458,7 @@ type deviceCreatedData struct {
 	Title, Nav string
 	Device     string
 	Area       string
+	Parent     string // внутрь какой области вставлять; пусто — верхний уровень
 	XML        string
 	Created    []createdRow
 }

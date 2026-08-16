@@ -65,14 +65,21 @@
         <p class="hint">Список пуст: logic.xml ещё не приехал — проверьте связь с умным домом.</p>
       {{end}}
 
-      <label>Первый sub-id <span>— занятые адреса пропускаются сами</span>
-        <input type="text" name="from_sub" value="{{.FromSub}}"></label>
+      <label>Первый sub-id
+        <span>— пусто означает «со следующего за последним занятым»; занятые пропускаются в любом случае</span>
+        <input type="text" name="from_sub" value="{{if .FromSub}}{{.FromSub}}{{end}}" placeholder="авто"></label>
 
-      <label>Область <span>— куда попадут элементы в дереве дома</span>
+      <label>Новая область <span>— как назвать раздел, в котором окажутся элементы</span>
         <input type="text" name="area" value="{{.Area}}" list="areas" placeholder="Инвертор1"></label>
       <datalist id="areas">
         {{range .Areas}}<option value="{{.}}">{{end}}
       </datalist>
+
+      <label>Внутри области <span>— чтобы раздел стал подразделом уже существующего</span>
+        <select name="area_parent">
+          <option value="">— верхний уровень —</option>
+          {{range .Areas}}<option value="{{.}}" {{if eq . $.AreaParent}}selected{{end}}>{{.}}</option>{{end}}
+        </select></label>
 
       <p class="actions">
         <button type="button" class="ghost" onclick="createAll()">Создать под все незаполненные роли</button>
