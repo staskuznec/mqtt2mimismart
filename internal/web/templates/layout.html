@@ -167,6 +167,11 @@
   .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
   .toolbar button, .toolbar .btn { margin-top: 0; }
+  /* Кнопка, отправляющая форму, обёрнута в <form> — и та становится
+     отдельным блоком в ряду, из-за чего кнопка съезжает по вертикали
+     относительно соседних ссылок. display:contents убирает обёртку из
+     раскладки, оставляя саму форму рабочей. */
+  .toolbar form { display: contents; }
 
   .empty {
     color: var(--muted); padding: 40px 20px; text-align: center;

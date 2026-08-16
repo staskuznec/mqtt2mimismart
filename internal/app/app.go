@@ -8,6 +8,7 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -53,7 +54,7 @@ type App struct {
 	// разбирать три сотни элементов на каждой отрисовке страницы незачем.
 	logicMu    sync.Mutex
 	logicHouse logic.House
-	logicSize  int
+	logicSum   [32]byte // отпечаток описания, по которому виден его пересмотр
 }
 
 // Elements отдаёт элементы умного дома из logic.xml.
@@ -74,15 +75,20 @@ func (a *App) Elements() []logic.Element {
 	a.logicMu.Lock()
 	defer a.logicMu.Unlock()
 
-	// Пересобираем, только когда описание сменилось: длина меняется при любой
-	// правке логики, а сравнивать целиком дороже, чем разбирать.
-	if a.logicSize != len(raw) {
+	// Пересобираем, только когда описание сменилось.
+	//
+	// Отпечаток, а не длина: правка адреса длину не меняет вовсе — 563:160 и
+	// 563:116 одинаковы по числу байт, — и элемент оставался в списке со
+	// старым адресом сколько угодно долго, сколько ни жми «перечитать».
+	// Хеш пары сотен килобайт стоит доли миллисекунды, разбор XML — дороже.
+	sum := sha256.Sum256(raw)
+	if sum != a.logicSum {
 		house, err := logic.Parse(raw)
 		if err != nil {
 			a.log.Error("разбор logic.xml", "err", err)
 			return a.logicHouse.Elements
 		}
-		a.logicHouse, a.logicSize = house, len(raw)
+		a.logicHouse, a.logicSum = house, sum
 		a.log.Info("логика умного дома разобрана",
 			"элементов", len(house.Elements), "областей", len(house.Areas()))
 	}
