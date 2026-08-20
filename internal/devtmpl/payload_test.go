@@ -124,8 +124,13 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 		{"tasmota-relay1", "Канал — состояние", "ON", "1", "01"},
 		{"tasmota-relay1", "Канал — состояние", "OFF", "0", "00"},
 		{"tasmota-relay4", "Канал 3 — состояние", "ON", "1", "01"},
-		{"tasmota-relay1", "На связи", "Online", "1", "01"},
-		{"tasmota-relay1", "На связи", "Offline", "0", "00"},
+		{"tasmota-relay1", "На связи", "Online", "онлайн", ""},
+		{"tasmota-relay1", "На связи", "Offline", "офлайн", ""},
+
+		// Уровень сигнала — из того же tele/STATE, что и состояние: поле
+		// Wifi.Signal, dBm. Проценты рядом в Wifi.RSSI, но пороги считаем по
+		// dBm, как у Shelly, — одна шкала на весь объект.
+		{"tasmota-relay1", "Уровень сигнала WiFi", tasmotaState, "хороший", ""},
 
 		// Измерения — объектом на tele, ключи вложены в ENERGY.
 		// Total у Tasmota уже в киловатт-часах, множителя быть не должно.
@@ -134,7 +139,10 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 		{"tasmota-plug", "Ток", tasmotaSensor, "0.33 А", ""},
 		{"tasmota-plug", "Энергия всего", tasmotaSensor, "3.2 кВт", ""},
 		{"tasmota-plug", "Энергия за сегодня", tasmotaSensor, "0.1 кВт", ""},
-		{"tasmota-plug", "Уровень сигнала WiFi", tasmotaState, "72 %", ""},
+		// Проценты из Wifi.RSSI сменились словом по Wifi.Signal: у dBm та же
+		// шкала, что у Shelly, и на объекте с обеими прошивками это читается
+		// как одно показание, а не два разных.
+		{"tasmota-plug", "Уровень сигнала WiFi", tasmotaState, "хороший", ""},
 
 		// У датчиков ключ в сообщении — имя чипа, и перепутать его легко.
 		{"tasmota-th", "Температура", tasmotaTH, "15.5", "80 0f"},
@@ -164,8 +172,17 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 		{"z2m-contact", "Открытие", `{"contact":true,"battery":100}`, "0", "00"},
 
 		// Доступность здесь тоже объект, а не слово.
-		{"z2m-switch", "На связи", `{"state":"online"}`, "1", "01"},
-		{"z2m-switch", "На связи", `{"state":"offline"}`, "0", "00"},
+		{"z2m-switch", "На связи", `{"state":"online"}`, "онлайн", ""},
+		{"z2m-switch", "На связи", `{"state":"offline"}`, "офлайн", ""},
+
+		// Zigbee меряет связь не в dBm, а в LQI: чем больше, тем лучше,
+		// поэтому пороги идут «больше либо равно». 60 — это середина.
+		{"z2m-plug", "Уровень сигнала Zigbee", z2mPlug, "нормальный", ""},
+		{"z2m-temp-hum", "Уровень сигнала Zigbee", z2mSensor, "нормальный", ""},
+		{"z2m-plug", "Уровень сигнала Zigbee",
+			`{"state":"ON","power":78,"linkquality":140}`, "хороший", ""},
+		{"z2m-plug", "Уровень сигнала Zigbee",
+			`{"state":"ON","power":78,"linkquality":18}`, "плохой", ""},
 
 		// МикроАрт: агент раскладывает поля API по отдельным топикам, и в
 		// каждом лежит голое число строкой — разбирать нечего.
