@@ -433,3 +433,58 @@ func TestRetargetDevices(t *testing.T) {
 		t.Errorf("связок %d, ожидалось 3: перевод устройства их не касается", len(links))
 	}
 }
+
+// Смена профиля устройства — например, со своей копии обратно на поставляемый.
+// Связки прежнего профиля должны уйти: их имена в новом могут не встретиться
+// вовсе, и остались бы они висеть у устройства как заведённые руками, с
+// топиками, которых в новом профиле нет.
+func TestReapplyDropsLinksOfPreviousTemplate(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	dir, err := devtmpl.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("каталог профилей: %v", err)
+	}
+	s.SetTemplates(dir)
+
+	profile := func(key, linkName string) devtmpl.Template {
+		body := `{"name":"` + key + `","model":"SHSW-1","roles":[{"key":"ch0","title":"Канал"}],` +
+			`"links":[{"name":"` + linkName + `","direction":"in","role":"ch0",` +
+			`"topic":"{{prefix}}/relay/0","encode":"byte"}]}`
+		if _, err := dir.Save(key, []byte(body)); err != nil {
+			t.Fatalf("сохранение профиля %s: %v", key, err)
+		}
+		tmpl, err := dir.Get(key)
+		if err != nil {
+			t.Fatalf("чтение профиля %s: %v", key, err)
+		}
+		return tmpl
+	}
+
+	mine := profile("мой-профиль", "МОЙ Канал")
+	stock := profile("поставляемый", "Канал 0 — состояние")
+	assign := map[string]devtmpl.Addr{"ch0": {ID: 563, SubID: 57}}
+
+	id, err := s.ApplyTemplate(ctx, Device{TopicPrefix: "shellies/a"}, mine, assign)
+	if err != nil {
+		t.Fatalf("ApplyTemplate: %v", err)
+	}
+
+	err = s.ReapplyTemplate(ctx, Device{ID: id, Name: "Тестовое", TopicPrefix: "shellies/a"},
+		stock, assign)
+	if err != nil {
+		t.Fatalf("ReapplyTemplate: %v", err)
+	}
+
+	links, err := s.LinksByDevice(ctx, id)
+	if err != nil {
+		t.Fatalf("LinksByDevice: %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("связок %d, ожидалась одна: связка прежнего профиля осталась сиротой: %+v", len(links), links)
+	}
+	if links[0].Name != "Канал 0 — состояние" {
+		t.Errorf("осталась связка %q, ожидалась из нового профиля", links[0].Name)
+	}
+}

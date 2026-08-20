@@ -7,7 +7,9 @@
 {{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
 
 <form method="get" action="{{if .DeviceID}}devices/{{.DeviceID}}/edit{{else}}devices/new{{end}}">
-  <label>Шаблон
+  <label>{{if .DeviceID}}Профиль устройства{{else}}Шаблон{{end}}
+    {{if .Bound}}<span>— сейчас <code>{{.Bound}}</code>; выберите другой, чтобы
+      перевести устройство на него</span>{{end}}
     <select name="template" onchange="this.form.submit()">
       <option value="">— выберите модель —</option>
       {{range .Templates}}
@@ -16,7 +18,19 @@
       {{end}}
     </select></label>
   <input type="hidden" name="prefix" value="{{.Prefix}}">
+  <!-- Кнопка на случай, когда onchange не сработал: без неё смена профиля
+       упирается в браузер, а понять это со стороны невозможно. -->
+  <button type="submit" class="ghost">Показать профиль</button>
 </form>
+
+{{if and .Bound .Selected.Key}}{{if ne .Bound .Selected.Key}}
+  <div class="msg ok">
+    Показан профиль «{{.Selected.Key}}», а устройство пока привязано к
+    «{{.Bound}}». Привязка сменится при сохранении: связки прежнего профиля
+    заменятся связками нового, назначения ролей перенесутся по совпадающим
+    именам связок.
+  </div>
+{{end}}{{end}}
 
 {{if .ForkOf}}
   <p class="hint">

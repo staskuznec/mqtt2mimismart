@@ -198,6 +198,18 @@ func (s *Store) ReapplyTemplate(ctx context.Context, d Device, t devtmpl.Templat
 		fromTemplate[spec.Name] = true
 	}
 
+	// Смена профиля устройства — например, со своей копии обратно на
+	// поставляемый. Связки прежнего профиля тоже уходят: их имена в новом
+	// могут не встретиться вовсе, и остались бы они висеть у устройства как
+	// заведённые руками — с топиками, которых в новом профиле нет.
+	if prev, err := s.Device(ctx, d.ID); err == nil && prev.Template != "" && prev.Template != t.Key {
+		if old, err := s.Template(ctx, prev.Template); err == nil {
+			for _, spec := range old.Links {
+				fromTemplate[spec.Name] = true
+			}
+		}
+	}
+
 	// Запоминаем, что было выключено: правка назначений не повод включать
 	// обратно то, что человек сознательно погасил.
 	disabled := make(map[string]bool)

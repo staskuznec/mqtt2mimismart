@@ -77,6 +77,11 @@ type deviceFormData struct {
 	// него, и узнать о них можно только здесь.
 	ForkOf string
 
+	// Bound — профиль, к которому устройство привязано сейчас, в базе.
+	// Отличается от выбранного, когда профиль меняют: показать это надо до
+	// сохранения, иначе смена выглядит как «ничего не произошло».
+	Bound string
+
 	// Заведение элементов прямо здесь: под роль, которой в умном доме ещё
 	// нечего назначить, шлюз подберёт свободный адрес и соберёт разметку.
 	Modules    []uint16 // модули (CM), которые уже есть в logic.xml
@@ -194,6 +199,7 @@ func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Selected, data.HasChoice = t, true
 		data.ForkOf, _ = devtmpl.Origin(t.Key)
+		data.Bound = d.Template
 
 		assign, err := s.db.Assignment(r.Context(), d.ID, t)
 		if err != nil {
