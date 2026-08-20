@@ -72,6 +72,11 @@ type deviceFormData struct {
 	// по типам, чтобы не искать лампу среди трёх сотен строк.
 	Roles []roleOption
 
+	// ForkOf — поставляемый профиль, копией которого работает устройство.
+	// Пока человек правит свою копию, новые роли из поставки проходят мимо
+	// него, и узнать о них можно только здесь.
+	ForkOf string
+
 	// Заведение элементов прямо здесь: под роль, которой в умном доме ещё
 	// нечего назначить, шлюз подберёт свободный адрес и соберёт разметку.
 	Modules    []uint16 // модули (CM), которые уже есть в logic.xml
@@ -188,6 +193,7 @@ func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data.Selected, data.HasChoice = t, true
+		data.ForkOf, _ = devtmpl.Origin(t.Key)
 
 		assign, err := s.db.Assignment(r.Context(), d.ID, t)
 		if err != nil {
@@ -558,6 +564,11 @@ type templatesData struct {
 	Hidden     bool // каталог спрятан в служебном месте, класть туда файлы неудобно
 	Error      string
 	Saved      string
+
+	// Forked — ключ поставляемого профиля, правка которого только что легла
+	// копией. Сказать об этом надо прямо: человек правил один файл, а
+	// сохранилось в другой, и молчание выглядело бы как потерянная правка.
+	Forked string
 }
 
 func (s *server) pageTemplates(w http.ResponseWriter, r *http.Request) {
@@ -580,7 +591,8 @@ func (s *server) pageTemplates(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "templates", templatesData{
 		Title: "Профили", Nav: "templates",
 		Templates: list, Dir: dir.Path(), Hidden: hidden,
-		Saved: r.URL.Query().Get("saved"),
+		Saved:  r.URL.Query().Get("saved"),
+		Forked: r.URL.Query().Get("forked"),
 	})
 }
 
@@ -657,13 +669,33 @@ func (s *server) saveTemplate(w http.ResponseWriter, r *http.Request) {
 		fail("не задан ключ шаблона — по нему он опознаётся и так называется файл")
 		return
 	}
-	if err := dir.Save(key, []byte(body)); err != nil {
+	saved, err := dir.Save(key, []byte(body))
+	if err != nil {
 		fail(err.Error())
 		return
 	}
 
-	s.log.Info("шаблон сохранён", "key", key)
-	s.redirect(w, r, "/templates?saved="+key)
+	// Правка поставляемого профиля легла копией. Устройства, настроенные по
+	// нему, переводим на неё: человек правил профиль ради своих устройств, и
+	// оставить их на эталоне значило бы потерять правку ровно там, где она
+	// нужна.
+	if saved != key {
+		n, err := s.db.RetargetDevices(r.Context(), key, saved)
+		if err != nil {
+			fail(err.Error())
+			return
+		}
+		s.log.Info("правка поставляемого профиля отложена копией",
+			"профиль", key, "копия", saved, "устройств переведено", n)
+	} else {
+		s.log.Info("шаблон сохранён", "key", saved)
+	}
+
+	if saved != key {
+		s.redirect(w, r, "/templates?saved="+saved+"&forked="+key)
+		return
+	}
+	s.redirect(w, r, "/templates?saved="+saved)
 }
 
 func (s *server) deleteTemplate(w http.ResponseWriter, r *http.Request) {

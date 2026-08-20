@@ -93,6 +93,21 @@ func (s *Store) UpdateDevice(ctx context.Context, d Device) error {
 	return checkAffected(res, "устройство", d.ID)
 }
 
+// RetargetDevices переводит устройства с одного профиля на другой.
+//
+// Нужно, когда правка поставляемого профиля уезжает в копию: устройство
+// настраивали по правленому профилю, и открыть его надо на той же копии, а не
+// на вернувшемся эталоне. Связки при этом не трогаются — они уже заведены и
+// работают.
+func (s *Store) RetargetDevices(ctx context.Context, from, to string) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE devices SET template = ? WHERE template = ?`, to, from)
+	if err != nil {
+		return 0, fmt.Errorf("store: перевод устройств с профиля %q: %w", from, err)
+	}
+	return res.RowsAffected()
+}
+
 // SetDeviceOnline отмечает присутствие устройства на шине.
 // Отдельным запросом: это приходит по LWT и не должно затирать остальные поля.
 func (s *Store) SetDeviceOnline(ctx context.Context, id int64, online bool) error {

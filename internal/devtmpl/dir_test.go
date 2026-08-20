@@ -39,8 +39,9 @@ func TestOpenSeedsBuiltin(t *testing.T) {
 	}
 }
 
-// Правки человека обновление шлюза затирать не вправе.
-func TestSeedKeepsUserChanges(t *testing.T) {
+// Правки человека обновление шлюза не теряет — но и на месте не оставляет:
+// правка уезжает в свой файл, поставляемый возвращается к эталону.
+func TestSeedMovesUserChangesToCopy(t *testing.T) {
 	d := openDir(t)
 
 	path := filepath.Join(d.Path(), "shelly1.json")
@@ -58,19 +59,35 @@ func TestSeedKeepsUserChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("повторное Open: %v", err)
 	}
-	got, err := again.Get("shelly1")
+
+	got, err := again.Get("shelly1" + forkSuffix)
+	if err != nil {
+		t.Fatalf("копия с правкой не заведена: %v", err)
+	}
+	if !strings.HasPrefix(got.Name, "Моя правка") {
+		t.Errorf("название копии = %q — правка потеряна", got.Name)
+	}
+
+	ref, err := again.Get("shelly1")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if !strings.HasPrefix(got.Name, "Моя правка") {
-		t.Errorf("название = %q — правка затёрта при перезапуске", got.Name)
+	if strings.HasPrefix(ref.Name, "Моя правка") {
+		t.Error("поставляемый профиль остался с правкой — исправления пойдут мимо него")
 	}
 
-	// И такой профиль помечается как изменённый.
+	// Поставляемый файл снова совпадает с эталоном, копия — своя, не его.
 	items, _ := again.List()
 	for _, it := range items {
-		if it.Key == "shelly1" && !it.Changed {
-			t.Error("изменённый профиль не помечен")
+		switch it.Key {
+		case "shelly1":
+			if it.Changed {
+				t.Error("поставляемый профиль помечен изменённым после отката к эталону")
+			}
+		case "shelly1" + forkSuffix:
+			if it.Bundled {
+				t.Error("копия с правкой считается поставляемой")
+			}
 		}
 	}
 }
@@ -154,7 +171,7 @@ func TestBrokenProfileIsListedWithError(t *testing.T) {
 func TestSaveValidates(t *testing.T) {
 	d := openDir(t)
 
-	if err := d.Save("empty", []byte(`{"name":"без связок"}`)); err == nil {
+	if _, err := d.Save("empty", []byte(`{"name":"без связок"}`)); err == nil {
 		t.Error("профиль без связок сохранён")
 	}
 	if _, err := os.Stat(filepath.Join(d.Path(), "empty.json")); err == nil {
@@ -168,7 +185,7 @@ func TestSaveRejectsPathEscape(t *testing.T) {
 	d := openDir(t)
 
 	for _, key := range []string{"../../etc/passwd", "a/b", `a\b`, "..", ""} {
-		if err := d.Save(key, []byte(`{}`)); err == nil {
+		if _, err := d.Save(key, []byte(`{}`)); err == nil {
 			t.Errorf("ключ %q принят", key)
 		}
 	}
@@ -218,19 +235,20 @@ func TestSeedUpdatesUntouchedProfile(t *testing.T) {
 	}
 }
 
-// Правка человека переживает и то обновление, в котором поставляемый профиль
-// изменился: потерять чужую работу хуже, чем не довезти исправление.
-func TestSeedKeepsChangedProfileOnUpdate(t *testing.T) {
+// Правка человека переживает обновление, но уже в своём файле: поставляемый
+// профиль возвращается к эталону и обновляется дальше, а правка живёт копией.
+// Так исправления перестают ходить мимо объекта, где однажды что-то подкрутили.
+func TestSeedForksChangedProfile(t *testing.T) {
 	d := openDir(t)
 
 	path := filepath.Join(d.Path(), "shelly1.json")
-	bundled, _ := os.ReadFile(path)
-	mine := strings.Replace(string(bundled), `"name": "Shelly 1`, `"name": "Моя правка`, 1)
+	bundledBody, _ := os.ReadFile(path)
+	mine := strings.Replace(string(bundledBody), `"name": "Shelly 1`, `"name": "Моя правка`, 1)
 	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
 		t.Fatalf("запись: %v", err)
 	}
 	// Отпечаток остался от того вида, который клали мы, — значит файл трогали.
-	if err := d.writeState(map[string]string{"shelly1": checksum(bundled)}); err != nil {
+	if err := d.writeState(map[string]string{"shelly1": checksum(bundledBody)}); err != nil {
 		t.Fatalf("отпечатки: %v", err)
 	}
 
@@ -238,12 +256,85 @@ func TestSeedKeepsChangedProfileOnUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("повторное Open: %v", err)
 	}
+
 	got, _ := again.Raw("shelly1")
-	if string(got) != mine {
-		t.Error("правка затёрта обновлением")
+	if string(got) != string(bundledBody) {
+		t.Error("поставляемый профиль не вернулся к эталону")
 	}
-	if !slices.Contains(again.Seeded().Kept, "shelly1") {
-		t.Errorf("профиль не отмечен как оставленный: %+v", again.Seeded())
+	copied, err := again.Raw("shelly1" + forkSuffix)
+	if err != nil {
+		t.Fatalf("копия с правкой не заведена: %v", err)
+	}
+	if string(copied) != mine {
+		t.Error("в копию легла не правка")
+	}
+
+	forks := again.Seeded().Forked
+	if len(forks) != 1 || forks[0].Key != "shelly1" || forks[0].Copy != "shelly1"+forkSuffix {
+		t.Errorf("откладывание копией не отмечено: %+v", forks)
+	}
+}
+
+// Перезапуск за перезапуском не должен плодить копии: та же правка, уже
+// отложенная, — это та же копия, а не новая.
+func TestSeedDoesNotPileUpForks(t *testing.T) {
+	d := openDir(t)
+
+	path := filepath.Join(d.Path(), "shelly1.json")
+	bundledBody, _ := os.ReadFile(path)
+	mine := strings.Replace(string(bundledBody), `"name": "Shelly 1`, `"name": "Моя правка`, 1)
+
+	for i := 0; i < 3; i++ {
+		if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
+			t.Fatalf("запись: %v", err)
+		}
+		if _, err := Open(d.Path()); err != nil {
+			t.Fatalf("повторное Open: %v", err)
+		}
+	}
+
+	items, err := d.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	copies := 0
+	for _, it := range items {
+		if strings.HasPrefix(it.Key, "shelly1"+forkSuffix) {
+			copies++
+		}
+	}
+	if copies != 1 {
+		t.Errorf("копий с правкой %d, ожидалась одна", copies)
+	}
+}
+
+// Разные правки — разные копии: вторая не затирает первую. Затереть чужую
+// правку значит сделать ровно то, от чего копии и заводятся.
+func TestSeedKeepsEveryFork(t *testing.T) {
+	d := openDir(t)
+
+	path := filepath.Join(d.Path(), "shelly1.json")
+	bundledBody, _ := os.ReadFile(path)
+
+	for _, name := range []string{"Первая правка", "Вторая правка"} {
+		mine := strings.Replace(string(bundledBody), `"name": "Shelly 1`, `"name": "`+name, 1)
+		if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
+			t.Fatalf("запись: %v", err)
+		}
+		if _, err := Open(d.Path()); err != nil {
+			t.Fatalf("повторное Open: %v", err)
+		}
+	}
+
+	first, err := d.Raw("shelly1" + forkSuffix)
+	if err != nil {
+		t.Fatalf("первая копия пропала: %v", err)
+	}
+	if !strings.Contains(string(first), "Первая правка") {
+		t.Error("первую копию затёрла вторая")
+	}
+	if _, err := d.Raw("shelly1" + forkSuffix + "-2"); err != nil {
+		t.Fatalf("вторая копия не заведена: %v", err)
 	}
 }
 
@@ -267,60 +358,100 @@ func TestStateFileIsNotListed(t *testing.T) {
 	}
 }
 
-// Если исправление вышло, а профиль правлен вручную, об этом надо сказать: сам
-// человек об упущенном исправлении не узнает никак. Просто правленый профиль
-// поводом для предупреждения не является — иначе оно висело бы при каждом
-// запуске у всех, кто хоть раз что-то настроил под себя.
-func TestSeedReportsMissedFix(t *testing.T) {
+// Правка поставляемого профиля через веб тоже уезжает в копию: эталон должен
+// оставаться эталоном, откуда бы правка ни пришла.
+func TestSaveForksBundledProfile(t *testing.T) {
 	d := openDir(t)
 
-	path := filepath.Join(d.Path(), "shelly1.json")
-	bundled, _ := os.ReadFile(path)
-	mine := strings.Replace(string(bundled), `"name": "Shelly 1`, `"name": "Моя правка`, 1)
-	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
-		t.Fatalf("запись: %v", err)
-	}
-
-	// Отпечаток остался от прошлой поставки: она отличается и от нынешней, и
-	// от правки — значит с тех пор профиль в поставке менялся.
-	if err := d.writeState(map[string]string{
-		"shelly1": checksum([]byte("вид из прошлой поставки")),
-	}); err != nil {
-		t.Fatalf("отпечатки: %v", err)
-	}
-
-	again, err := Open(d.Path())
+	body, err := d.Raw("shelly1")
 	if err != nil {
-		t.Fatalf("повторное Open: %v", err)
+		t.Fatalf("Raw: %v", err)
 	}
-	if got, _ := again.Raw("shelly1"); string(got) != mine {
-		t.Error("правка затёрта")
+	mine := strings.Replace(string(body), `"name": "Shelly 1`, `"name": "Моя правка`, 1)
+
+	key, err := d.Save("shelly1", []byte(mine))
+	if err != nil {
+		t.Fatalf("Save: %v", err)
 	}
-	if !slices.Contains(again.Seeded().Stale, "shelly1") {
-		t.Errorf("упущенное исправление не отмечено: %+v", again.Seeded())
+	if key != "shelly1"+forkSuffix {
+		t.Errorf("правка сохранена под ключом %q, ожидалась копия", key)
+	}
+
+	got, _ := d.Raw("shelly1")
+	if string(got) != string(body) {
+		t.Error("поставляемый профиль изменён правкой")
+	}
+	copied, _ := d.Raw(key)
+	if string(copied) != mine {
+		t.Error("в копию легла не правка")
 	}
 }
 
-// А вот у профиля, который просто правлен под себя, ничего не упущено: в
-// поставке он с прошлого раза не менялся.
-func TestEditedProfileWithoutNewVersionIsNotStale(t *testing.T) {
+// Сохранение поставляемого профиля без изменений копии не заводит: человек
+// открыл, посмотрел и нажал «сохранить» — файлов от этого прибавляться не
+// должно.
+func TestSaveWithoutChangesKeepsKey(t *testing.T) {
 	d := openDir(t)
 
-	path := filepath.Join(d.Path(), "shelly1.json")
-	bundled, _ := os.ReadFile(path)
-	mine := strings.Replace(string(bundled), `"name": "Shelly 1`, `"name": "Моя правка`, 1)
-	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
-		t.Fatalf("запись: %v", err)
+	body, _ := d.Raw("shelly1")
+	key, err := d.Save("shelly1", body)
+	if err != nil {
+		t.Fatalf("Save: %v", err)
 	}
-	if err := d.writeState(map[string]string{"shelly1": checksum(bundled)}); err != nil {
-		t.Fatalf("отпечатки: %v", err)
+	if key != "shelly1" {
+		t.Errorf("ключ %q, ожидался прежний: профиль не менялся", key)
+	}
+}
+
+// Свой профиль правится на месте: копировать нечего, эталона у него нет.
+func TestSaveOwnProfileInPlace(t *testing.T) {
+	d := openDir(t)
+
+	body, _ := d.Raw("shelly1")
+	mine := strings.Replace(string(body), `"name": "Shelly 1`, `"name": "Мой профиль`, 1)
+	if _, err := d.Save("мой-профиль", []byte(mine)); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
-	again, err := Open(d.Path())
+	again := strings.Replace(mine, `"name": "Мой профиль`, `"name": "Мой профиль 2`, 1)
+	key, err := d.Save("мой-профиль", []byte(again))
 	if err != nil {
-		t.Fatalf("повторное Open: %v", err)
+		t.Fatalf("Save: %v", err)
 	}
-	if slices.Contains(again.Seeded().Stale, "shelly1") {
-		t.Error("правленый профиль отмечен как упустивший исправление, хотя в поставке ничего не менялось")
+	if key != "мой-профиль" {
+		t.Errorf("ключ %q, ожидался прежний", key)
+	}
+	got, _ := d.Raw("мой-профиль")
+	if string(got) != again {
+		t.Error("правка своего профиля не сохранилась на месте")
+	}
+}
+
+// Форма устройства должна знать, копией какого профиля работает устройство:
+// иначе новые роли из поставки проходят мимо, и заметить это неоткуда.
+func TestOrigin(t *testing.T) {
+	for _, tc := range []struct {
+		key  string
+		want string
+	}{
+		{"shelly1" + forkSuffix, "shelly1"},
+		{"shelly1" + forkSuffix + "-2", "shelly1"},
+		{"shelly1", ""}, // сам поставляемый копией не является
+		{"мой-профиль" + forkSuffix, ""}, // копия своего профиля: эталона нет
+		{forkSuffix, ""},                   // имя из одного суффикса
+		{"shelly1" + forkSuffix + "x", ""}, // похожее имя, но не копия
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			got, ok := Origin(tc.key)
+			if tc.want == "" {
+				if ok {
+					t.Errorf("ключ %q сочтён копией профиля %q", tc.key, got)
+				}
+				return
+			}
+			if !ok || got != tc.want {
+				t.Errorf("Origin(%q) = %q, %v; ожидалось %q", tc.key, got, ok, tc.want)
+			}
+		})
 	}
 }

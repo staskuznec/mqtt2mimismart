@@ -6,6 +6,12 @@
   Лежат они файлами в <code>{{.Dir}}</code>: туда можно положить свой, а можно
   завести прямо здесь.
 </p>
+<p class="hint">
+  Поставляемые профили обновляются вместе со шлюзом и остаются эталонными.
+  Правка такого профиля сохраняется отдельным файлом <code>&lt;ключ&gt;.local</code>,
+  и устройства, заведённые по нему, переезжают на копию: так правка не теряется,
+  а исправления из поставки перестают ходить мимо объекта.
+</p>
 
 {{if .Hidden}}
   <div class="msg bad">
@@ -18,7 +24,13 @@
   </div>
 {{end}}
 {{if .Error}}<div class="msg bad">{{.Error}}</div>{{end}}
-{{if .Saved}}<div class="msg ok">Профиль «{{.Saved}}» сохранён.</div>{{end}}
+{{if .Forked}}
+  <div class="msg ok">
+    Правка сохранена копией «{{.Saved}}»: профиль «{{.Forked}}» поставляется со
+    шлюзом и остаётся эталонным. Устройства, заведённые по нему, переведены на
+    копию — дальше правьте её.
+  </div>
+{{else if .Saved}}<div class="msg ok">Профиль «{{.Saved}}» сохранён.</div>{{end}}
 
 <div class="toolbar">
   <a href="templates/new" class="btn">Новый профиль</a>
@@ -35,7 +47,8 @@
       <td>
         {{if .Error}}<span class="pill bad">не разбирается</span> {{end}}
         {{.Name}}
-        {{if .Changed}}<span class="hint">· изменён</span>{{end}}
+        {{if .Changed}}<span class="hint">· правлен на диске, при следующем
+          запуске уедет копией</span>{{end}}
       </td>
       <td class="hint">{{.Model}}</td>
       <td class="num">{{len .Roles}}</td>

@@ -372,3 +372,64 @@ func TestApplyTemplateNamesDevicesApart(t *testing.T) {
 		}
 	}
 }
+
+// Правка поставляемого профиля уезжает в копию, и устройства, настроенные по
+// нему, должны переехать на неё: иначе форма устройства откроется на эталоне,
+// где правки нет, и следующее сохранение соберёт связки не те.
+func TestRetargetDevices(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	tmpl := devtmpl.Template{
+		Key: "shelly1", Name: "Shelly 1", Model: "SHSW-1",
+		Roles: []devtmpl.Role{{Key: "ch0", Title: "Канал"}},
+		Links: []devtmpl.LinkSpec{{
+			Name: "Канал — состояние", Direction: "in", Role: "ch0",
+			Topic: "{{prefix}}/relay/0", Encode: "byte",
+		}},
+	}
+	assign := map[string]devtmpl.Addr{"ch0": {ID: 563, SubID: 57}}
+
+	for _, prefix := range []string{"shellies/a", "shellies/b"} {
+		if _, err := s.ApplyTemplate(ctx, Device{TopicPrefix: prefix}, tmpl, assign); err != nil {
+			t.Fatalf("ApplyTemplate %s: %v", prefix, err)
+		}
+	}
+	// Чужое устройство трогать нельзя: у него свой профиль.
+	other := tmpl
+	other.Key, other.Name = "tasmota-relay1", "Tasmota"
+	if _, err := s.ApplyTemplate(ctx, Device{TopicPrefix: "tasmota/c"}, other, assign); err != nil {
+		t.Fatalf("ApplyTemplate чужого: %v", err)
+	}
+
+	moved, err := s.RetargetDevices(ctx, "shelly1", "shelly1.local")
+	if err != nil {
+		t.Fatalf("RetargetDevices: %v", err)
+	}
+	if moved != 2 {
+		t.Errorf("переведено %d устройств, ожидалось 2", moved)
+	}
+
+	devices, err := s.Devices(ctx)
+	if err != nil {
+		t.Fatalf("Devices: %v", err)
+	}
+	for _, d := range devices {
+		want := "shelly1.local"
+		if d.TopicPrefix == "tasmota/c" {
+			want = "tasmota-relay1"
+		}
+		if d.Template != want {
+			t.Errorf("%s: профиль %q, ожидался %q", d.TopicPrefix, d.Template, want)
+		}
+	}
+
+	// Связки при переводе не трогаются: они уже заведены и работают.
+	links, err := s.Links(ctx)
+	if err != nil {
+		t.Fatalf("Links: %v", err)
+	}
+	if len(links) != 3 {
+		t.Errorf("связок %d, ожидалось 3: перевод устройства их не касается", len(links))
+	}
+}

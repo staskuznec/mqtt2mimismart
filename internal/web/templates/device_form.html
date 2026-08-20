@@ -12,11 +12,20 @@
       <option value="">— выберите модель —</option>
       {{range .Templates}}
         <option value="{{.Key}}" {{if eq .Key $.Selected.Key}}selected{{end}}>
-          {{.Name}}{{if not .Bundled}} · загруженный{{end}}</option>
+          {{.Name}}{{if not .Bundled}} · свой ({{.Key}}){{end}}</option>
       {{end}}
     </select></label>
   <input type="hidden" name="prefix" value="{{.Prefix}}">
 </form>
+
+{{if .ForkOf}}
+  <p class="hint">
+    Устройство работает по вашей копии профиля. Поставляемый
+    «<a href="{{if .DeviceID}}devices/{{.DeviceID}}/edit{{else}}devices/new{{end}}?template={{.ForkOf}}{{if .Prefix}}&prefix={{.Prefix}}{{end}}">{{.ForkOf}}</a>»
+    обновляется вместе со шлюзом — загляните в него, если ждёте новых ролей.
+    Переключение ничего не ломает: назначения останутся, связки соберутся заново.
+  </p>
+{{end}}
 
 {{if .Reloading}}
   <div class="msg ok">Здороваемся с умным домом заново — обновите страницу через

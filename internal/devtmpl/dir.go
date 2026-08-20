@@ -35,13 +35,18 @@ const stateFile = ".bundled.json"
 type SeedResult struct {
 	Added   []string // появились впервые
 	Updated []string // подтянуто исправление из поставки
-	Kept    []string // оставлены как есть: правлены руками
+	Forked  []Fork   // правленые отложены копией, поставляемый обновлён
+}
 
-	// Stale — те из Kept, мимо которых прошло настоящее исправление: в
-	// поставке профиль с прошлого раза изменился, а файл правлен вручную.
-	// Только об этом и стоит предупреждать. Просто правленый профиль —
-	// обычное дело, и говорить о нём при каждом запуске незачем.
-	Stale []string
+// Fork — правка поставляемого профиля, отложенная в отдельный файл.
+//
+// Раньше правленый файл оставался на месте, и исправления из поставки шли
+// мимо него: на объекте профиль годами оставался таким, каким его однажды
+// подкрутили, а о новых ролях узнать было неоткуда. Теперь правка уезжает в
+// свой файл, а поставляемый возвращается к эталону и обновляется дальше.
+type Fork struct {
+	Key  string // поставляемый ключ, файл которого правили
+	Copy string // куда легли правки
 }
 
 // Open открывает каталог, создавая его при необходимости, и раскладывает туда
@@ -119,23 +124,94 @@ func (d *Dir) seed() error {
 
 		default:
 			// Правлен руками — или пришёл из версии, когда отпечатков ещё не
-			// было. Отличить одно от другого нельзя, поэтому не трогаем:
-			// потерять чужую правку хуже, чем не довезти исправление.
-			// Прежний отпечаток сохраняем, иначе следующее обновление сочло
-			// бы этот файл нашим и затёрло.
-			d.seeded.Kept = append(d.seeded.Kept, t.Key)
-			if prev := known[t.Key]; prev != "" {
-				next[t.Key] = prev
-				if prev != sum {
-					// С прошлого раза поставляемый профиль изменился, а этот
-					// файл правлен: исправление прошло мимо него.
-					d.seeded.Stale = append(d.seeded.Stale, t.Key)
-				}
+			// было. Отличить одно от другого нельзя, и потерять чужую правку
+			// нельзя тем более. Поэтому правка уезжает в отдельный файл, а
+			// поставляемый возвращается к эталону: копия остаётся рабочей,
+			// а исправления перестают ходить мимо профиля.
+			copyKey, err := d.fork(t.Key, current)
+			if err != nil {
+				return err
 			}
+			if err := write(path, body); err != nil {
+				return err
+			}
+			next[t.Key] = sum
+			d.seeded.Forked = append(d.seeded.Forked, Fork{Key: t.Key, Copy: copyKey})
 		}
 	}
 
 	return d.writeState(next)
+}
+
+// fork откладывает правленый профиль в отдельный файл и возвращает его ключ.
+//
+// Имя — «<ключ>.local», рядом с исходным: в каталоге сразу видно, от чего
+// копия. Занятое имя не перезаписываем, а берём следующее: под ним может
+// лежать прошлая правка, и затереть её значит сделать ровно то, от чего мы
+// уходим. Копия, совпадающая с правкой байт в байт, считается своей — иначе
+// каждый перезапуск плодил бы новый файл.
+func (d *Dir) fork(key string, body []byte) (string, error) {
+	for i := 1; i <= forkLimit; i++ {
+		name := key + forkSuffix
+		if i > 1 {
+			name = fmt.Sprintf("%s%s-%d", key, forkSuffix, i)
+		}
+
+		path := filepath.Join(d.path, name+ext)
+		current, err := os.ReadFile(path)
+		switch {
+		case os.IsNotExist(err):
+			if err := write(path, body); err != nil {
+				return "", err
+			}
+			return name, nil
+		case err != nil:
+			return "", fmt.Errorf("devtmpl: чтение %s: %w", path, err)
+		case string(current) == string(body):
+			return name, nil // такая копия уже лежит
+		}
+	}
+	return "", fmt.Errorf("devtmpl: у профиля %q уже %d копий с правками; "+
+		"разберите их в каталоге профилей", key, forkLimit)
+}
+
+// Копии правленых профилей.
+const (
+	forkSuffix = ".local"
+	forkLimit  = 20
+)
+
+// Origin сообщает, копией какого поставляемого профиля является ключ.
+//
+// Нужно форме устройства: работая по своей копии, человек не видит, что в
+// поставляемом профиле с тех пор появились роли, — а именно так и теряются
+// новые показания. Ссылка на исходный профиль стоит ровно там, где о нём
+// вспоминают.
+func Origin(key string) (string, bool) {
+	cut := strings.Index(key, forkSuffix)
+	if cut <= 0 {
+		return "", false
+	}
+	// Хвост после «.local» — только номер копии: «.local», «.local-2».
+	tail := key[cut+len(forkSuffix):]
+	if tail != "" && !strings.HasPrefix(tail, "-") {
+		return "", false
+	}
+
+	base := key[:cut]
+	if _, ok := bundled(base); !ok {
+		return "", false
+	}
+	return base, true
+}
+
+// bundled отдаёт поставляемый профиль как он едет в бинарнике.
+func bundled(key string) ([]byte, bool) {
+	body, err := templateFS.ReadFile(key + ext)
+	if err != nil {
+		return nil, false
+	}
+	return body, true
 }
 
 // checksum — отпечаток содержимого файла.
@@ -273,17 +349,26 @@ func (d *Dir) Raw(key string) ([]byte, error) {
 }
 
 // Save проверяет и записывает шаблон.
-func (d *Dir) Save(key string, body []byte) error {
+// Save сохраняет профиль и возвращает ключ, под которым он лёг.
+//
+// Ключ возвращается не для порядка: правка поставляемого профиля уезжает в
+// копию, и вызывающему надо знать, куда именно, — устройства переводятся на
+// неё, и открыть после сохранения нужно тоже её. Поставляемый файл остаётся
+// эталоном и продолжает обновляться вместе со шлюзом.
+func (d *Dir) Save(key string, body []byte) (string, error) {
 	path, err := d.pathFor(key)
 	if err != nil {
-		return err
+		return "", err
 	}
 	// Проверка до записи: шаблон применяют один раз и потом доверяют ему.
 	if _, err := Parse(body); err != nil {
-		return err
+		return "", err
 	}
 
-	return write(path, body)
+	if ref, ok := bundled(key); ok && string(ref) != string(body) {
+		return d.fork(key, body)
+	}
+	return key, write(path, body)
 }
 
 // Delete удаляет шаблон. Поставляемый вернётся при следующем запуске: он едет
