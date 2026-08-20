@@ -348,7 +348,22 @@ func (d *Dir) Raw(key string) ([]byte, error) {
 	return body, nil
 }
 
-// Save проверяет и записывает шаблон.
+// ErrHasCopy — у поставляемого профиля уже есть копия с правками.
+//
+// Копия у профиля одна: иначе каждая правка эталона плодила бы файл, и через
+// месяц в каталоге лежало бы десять «моих» shelly25-relay, из которых поди
+// разбери, какой рабочий. Поэтому вторая правка не сохраняется молча ни в
+// новый файл, ни поверх копии — вызывающий отправляет человека править копию.
+type ErrHasCopy struct {
+	Key  string // поставляемый профиль
+	Copy string // его копия с правками
+}
+
+func (e ErrHasCopy) Error() string {
+	return fmt.Sprintf("у профиля %q уже есть ваша копия %q — правьте её: "+
+		"поставляемый остаётся эталонным и обновляется со шлюзом", e.Key, e.Copy)
+}
+
 // Save сохраняет профиль и возвращает ключ, под которым он лёг.
 //
 // Ключ возвращается не для порядка: правка поставляемого профиля уезжает в
@@ -366,10 +381,27 @@ func (d *Dir) Save(key string, body []byte) (string, error) {
 	}
 
 	if ref, ok := bundled(key); ok && string(ref) != string(body) {
+		if copyKey, ok := d.copyOf(key); ok {
+			return "", ErrHasCopy{Key: key, Copy: copyKey}
+		}
 		return d.fork(key, body)
 	}
 	return key, write(path, body)
 }
+
+// copyOf ищет копию поставляемого профиля.
+func (d *Dir) copyOf(key string) (string, bool) {
+	name := key + forkSuffix
+	if _, err := os.Stat(filepath.Join(d.path, name+ext)); err == nil {
+		return name, true
+	}
+	return "", false
+}
+
+// HasCopy сообщает, есть ли у поставляемого профиля копия с правками. Нужно
+// редактору: открывая эталон, человек должен видеть, что рабочая версия —
+// рядом, а не узнавать об этом отказом при сохранении.
+func (d *Dir) HasCopy(key string) (string, bool) { return d.copyOf(key) }
 
 // Delete удаляет шаблон. Поставляемый вернётся при следующем запуске: он едет
 // в бинарнике, и удаление файла означает «взять заново», а не «убрать совсем».

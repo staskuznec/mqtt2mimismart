@@ -1,6 +1,7 @@
 package devtmpl
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -453,5 +454,42 @@ func TestOrigin(t *testing.T) {
 				t.Errorf("Origin(%q) = %q, %v; ожидалось %q", tc.key, got, ok, tc.want)
 			}
 		})
+	}
+}
+
+// Копия у поставляемого профиля одна. Иначе каждая правка эталона плодила бы
+// файл, и через месяц в каталоге лежало бы десять «моих» shelly1, из которых
+// не разобрать, какой рабочий.
+func TestSaveRefusesSecondCopy(t *testing.T) {
+	d := openDir(t)
+
+	body, _ := d.Raw("shelly1")
+	first := strings.Replace(string(body), `"name": "Shelly 1`, `"name": "Первая правка`, 1)
+	key, err := d.Save("shelly1", []byte(first))
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	second := strings.Replace(string(body), `"name": "Shelly 1`, `"name": "Вторая правка`, 1)
+	_, err = d.Save("shelly1", []byte(second))
+
+	var has ErrHasCopy
+	if !errors.As(err, &has) {
+		t.Fatalf("вторая правка эталона принята: %v", err)
+	}
+	if has.Copy != key {
+		t.Errorf("отказ указывает на %q, ожидалась копия %q", has.Copy, key)
+	}
+
+	// Первая копия при этом цела: отказ не значит «затёрли».
+	got, _ := d.Raw(key)
+	if !strings.Contains(string(got), "Первая правка") {
+		t.Error("копия изменилась при отказе")
+	}
+
+	// А сама копия правится сколько угодно — она уже своя.
+	third := strings.Replace(string(got), "Первая правка", "Третья правка", 1)
+	if _, err := d.Save(key, []byte(third)); err != nil {
+		t.Fatalf("правка копии: %v", err)
 	}
 }

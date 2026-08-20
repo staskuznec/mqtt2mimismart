@@ -605,6 +605,11 @@ type templateEditData struct {
 	Bundled    bool
 	Error      string
 	Saved      bool
+
+	// Copy — копия этого поставляемого профиля, если она уже заведена.
+	// Правят её, а не эталон, и сказать об этом надо до сохранения, а не
+	// отказом после.
+	Copy string
 }
 
 func (s *server) pageTemplateEdit(w http.ResponseWriter, r *http.Request) {
@@ -641,6 +646,9 @@ func (s *server) pageTemplateEdit(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if data.Bundled {
+		data.Copy, _ = dir.HasCopy(key)
+	}
 	s.render(w, "template_edit", data)
 }
 
@@ -659,10 +667,14 @@ func (s *server) saveTemplate(w http.ResponseWriter, r *http.Request) {
 	body := r.PostFormValue("body")
 
 	fail := func(msg string) {
-		s.render(w, "template_edit", templateEditData{
+		data := templateEditData{
 			Title: "Профиль", Nav: "templates",
 			Key: key, Body: body, Error: msg, New: r.PostFormValue("new") == "1",
-		})
+		}
+		if copyKey, ok := dir.HasCopy(key); ok {
+			data.Bundled, data.Copy = true, copyKey
+		}
+		s.render(w, "template_edit", data)
 	}
 
 	if key == "" {
