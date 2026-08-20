@@ -488,3 +488,44 @@ func TestReapplyDropsLinksOfPreviousTemplate(t *testing.T) {
 		t.Errorf("осталась связка %q, ожидалась из нового профиля", links[0].Name)
 	}
 }
+
+// Отказ на записи устройства не должен стоить ему связок. Префикс топиков
+// уникален, и человек, вставивший чужой префикс, получал раньше ошибку SQL и
+// пустое устройство: связки к этому моменту были уже удалены.
+func TestReapplyKeepsLinksWhenDeviceUpdateFails(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	tmpl := devtmpl.Template{
+		Key: "shelly1", Name: "Shelly 1", Model: "SHSW-1",
+		Roles: []devtmpl.Role{{Key: "ch0", Title: "Канал"}},
+		Links: []devtmpl.LinkSpec{{
+			Name: "Канал 0 — состояние", Direction: "in", Role: "ch0",
+			Topic: "{{prefix}}/relay/0", Encode: "byte",
+		}},
+	}
+	assign := map[string]devtmpl.Addr{"ch0": {ID: 563, SubID: 57}}
+
+	id, err := s.ApplyTemplate(ctx, Device{TopicPrefix: "shellies/a"}, tmpl, assign)
+	if err != nil {
+		t.Fatalf("ApplyTemplate: %v", err)
+	}
+	if _, err := s.ApplyTemplate(ctx, Device{TopicPrefix: "shellies/b"}, tmpl, assign); err != nil {
+		t.Fatalf("ApplyTemplate соседа: %v", err)
+	}
+
+	// Префикс соседа: UPDATE упрётся в уникальный индекс.
+	err = s.ReapplyTemplate(ctx, Device{ID: id, Name: "Тестовое", TopicPrefix: "shellies/b"},
+		tmpl, assign)
+	if err == nil {
+		t.Fatal("чужой префикс принят, ожидалась ошибка")
+	}
+
+	links, err := s.LinksByDevice(ctx, id)
+	if err != nil {
+		t.Fatalf("LinksByDevice: %v", err)
+	}
+	if len(links) != 1 {
+		t.Errorf("связок осталось %d, ожидалась одна: отказ стёр связки устройства", len(links))
+	}
+}

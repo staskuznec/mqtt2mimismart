@@ -187,6 +187,11 @@ func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 		data.Title = "Настройка устройства"
 		data.DeviceID, data.Name, data.Prefix = d.ID, d.Name, d.TopicPrefix
 
+		// Привязку показываем до чтения профиля: если файл пропал или не
+		// разбирается, форма покажет одну ошибку, и понять, какого профиля не
+		// хватает, будет неоткуда — а это первое, что нужно знать.
+		data.Bound = d.Template
+
 		key := d.Template
 		if q := r.URL.Query().Get("template"); q != "" {
 			key = q // шаблон переключили прямо в форме
@@ -199,7 +204,6 @@ func (s *server) pageDeviceForm(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Selected, data.HasChoice = t, true
 		data.ForkOf, _ = devtmpl.Origin(t.Key)
-		data.Bound = d.Template
 
 		assign, err := s.db.Assignment(r.Context(), d.ID, t)
 		if err != nil {
@@ -363,6 +367,14 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 		}
 		if deviceID != 0 {
 			data.Title = "Настройка устройства"
+
+			// Отказ не повод терять предупреждение о смене профиля: скрытое
+			// поле формы по-прежнему несёт новый профиль, и без этой строки
+			// человек сохранит второй раз, не увидев, что привязка меняется.
+			if d, err := s.db.Device(r.Context(), deviceID); err == nil {
+				data.Bound = d.Template
+			}
+			data.ForkOf, _ = devtmpl.Origin(key)
 		}
 		if dir := s.db.TemplateDir(); dir != nil {
 			if list, err := dir.List(); err == nil {
@@ -462,6 +474,18 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 
 	device := store.Device{ID: deviceID, Name: name, TopicPrefix: prefix}
 	if deviceID != 0 {
+		// Связки прежнего профиля убираются по его же файлу: имена связок
+		// известны только оттуда. Файл могли удалить на странице «Профили» —
+		// тогда связки останутся у устройства, и молчать об этом нельзя.
+		if prev, err := s.db.Device(r.Context(), deviceID); err == nil &&
+			prev.Template != "" && prev.Template != key {
+			if _, err := s.db.Template(r.Context(), prev.Template); err != nil {
+				s.log.Warn("прежний профиль устройства не читается, его связки останутся",
+					"устройство", prev.Name, "профиль", prev.Template, "err", err,
+					"hint", "лишние связки удалите на странице «Связки»")
+			}
+		}
+
 		err = s.db.ReapplyTemplate(r.Context(), device, tmpl, assign)
 	} else {
 		_, err = s.db.ApplyTemplate(r.Context(), device, tmpl, assign)
