@@ -422,3 +422,124 @@ func TestUnknownValueErrorNamesTheField(t *testing.T) {
 		t.Errorf("ошибка не показывает готовую строку: %v", err)
 	}
 }
+
+// Уровень сигнала WiFi приходит числом (-73 dBm), а на панели умного дома
+// хочется слово. Точного совпадения тут не будет никогда, поэтому ключ
+// таблицы — порог: срабатывает ближайший, а не первый попавшийся.
+func TestToWireThresholds(t *testing.T) {
+	l := Link{
+		Direction: In,
+		Topic:     "shellies/shelly25-A1/wifi/rssi",
+		Encode:    EncodeText,
+		Values: map[string]string{
+			"<=-90": "нет сигнала",
+			"<=-80": "плохой",
+			"<=-70": "средний",
+			"<=-60": "хороший",
+			"*":     "отличный",
+		},
+	}
+
+	for _, tc := range []struct {
+		payload string
+		want    string
+	}{
+		{"-95", "нет сигнала"},
+		{"-90", "нет сигнала"},
+		{"-83", "плохой"},
+		{"-73", "средний"},
+		{"-61", "хороший"},
+		{"-45", "отличный"},
+	} {
+		t.Run(tc.payload, func(t *testing.T) {
+			w, err := l.ToWire([]byte(tc.payload))
+			if err != nil {
+				t.Fatalf("ToWire: %v", err)
+			}
+			if w.Text != tc.want {
+				t.Errorf("%s → %q, ожидалось %q", tc.payload, w.Text, tc.want)
+			}
+		})
+	}
+}
+
+// Пороги «больше либо равно» читаются с другого конца: заряд батареи 100%
+// должен попасть в «полный», а не в первый же диапазон сверху.
+func TestToWireThresholdsGE(t *testing.T) {
+	l := Link{
+		Encode: EncodeText,
+		Values: map[string]string{
+			">=80": "полный",
+			">=40": "средний",
+			">=15": "низкий",
+			"*":    "разряжена",
+		},
+	}
+
+	for _, tc := range []struct {
+		payload string
+		want    string
+	}{
+		{"100", "полный"},
+		{"80", "полный"},
+		{"55", "средний"},
+		{"15", "низкий"},
+		{"7", "разряжена"},
+	} {
+		t.Run(tc.payload, func(t *testing.T) {
+			w, err := l.ToWire([]byte(tc.payload))
+			if err != nil {
+				t.Fatalf("ToWire: %v", err)
+			}
+			if w.Text != tc.want {
+				t.Errorf("%s → %q, ожидалось %q", tc.payload, w.Text, tc.want)
+			}
+		})
+	}
+}
+
+// Точное совпадение сильнее порога: устройство вправе прислать словом даже то,
+// что обычно приходит числом.
+func TestToWireExactBeatsThreshold(t *testing.T) {
+	l := Link{
+		Encode: EncodeText,
+		Values: map[string]string{"-70": "ровно семьдесят", "<=-60": "слабый", "*": "хороший"},
+	}
+
+	w, err := l.ToWire([]byte("-70"))
+	if err != nil {
+		t.Fatalf("ToWire: %v", err)
+	}
+	if w.Text != "ровно семьдесят" {
+		t.Errorf("текст = %q, ожидалось точное совпадение", w.Text)
+	}
+}
+
+// Звёздочка — про диапазоны, а не про «любое значение». В обычной таблице
+// без порогов она не должна подменять собой всё подряд, иначе связка тихо
+// начнёт отправлять одно и то же.
+func TestBucketStarNeedsThresholds(t *testing.T) {
+	l := Link{Encode: EncodeText, Values: map[string]string{"on": "включено", "*": "неизвестно"}}
+
+	w, err := l.ToWire([]byte("42"))
+	if err != nil {
+		t.Fatalf("ToWire: %v", err)
+	}
+	if w.Text != "42" {
+		t.Errorf("текст = %q, значение без порогов должно остаться как есть", w.Text)
+	}
+}
+
+// Порогам нужно число: слово «offline» сравнивать не с чем, и подменять его
+// звёздочкой нельзя — иначе авария выглядела бы как «отличный сигнал».
+func TestBucketIgnoresNonNumber(t *testing.T) {
+	l := Link{Encode: EncodeText, Values: map[string]string{"<=-70": "слабый", "*": "отличный"}}
+
+	w, err := l.ToWire([]byte("offline"))
+	if err != nil {
+		t.Fatalf("ToWire: %v", err)
+	}
+	if w.Text != "offline" {
+		t.Errorf("текст = %q, ожидалось исходное слово", w.Text)
+	}
+}

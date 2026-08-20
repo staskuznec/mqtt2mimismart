@@ -116,6 +116,9 @@
   <label>Таблица значений на вход <span>— по строке на пару, «ключ = значение»</span>
     <textarea name="values" rows="5" style="width:100%;max-width:460px;font-family:ui-monospace,monospace"
               placeholder="on = 1&#10;off = 0&#10;overpower = 1">{{.ValuesText}}</textarea></label>
+  <p class="hint">Ключом может быть порог: <code>&lt;=-90 = нет сигнала</code>,
+    <code>&gt;=80 = полный</code>, <code>* = остальное</code>. Срабатывает ближайший
+    порог, точное совпадение сильнее любого из них.</p>
 
   <label class="check"><input type="checkbox" name="only_changed" {{if .Link.OnlyChanged}}checked{{end}}>
     отсеивать повторы <span>— без этого одно и то же значение уходит на каждом опросе</span></label>

@@ -542,7 +542,7 @@ func valuesFromText(text string) (map[string]string, error) {
 		if line == "" {
 			continue
 		}
-		key, value, found := strings.Cut(line, "=")
+		key, value, found := cutPair(line)
 		if !found {
 			return nil, errors.New("таблица значений, строка " + strconv.Itoa(i+1) +
 				": ожидался вид «ключ = значение»")
@@ -553,6 +553,20 @@ func valuesFromText(text string) (map[string]string, error) {
 		return nil, nil
 	}
 	return values, nil
+}
+
+// cutPair делит строку таблицы на ключ и значение.
+//
+// Порог «<=-90» сам содержит знак равенства, поэтому первый «=» строки не
+// всегда разделитель: резать по нему — значит получить ключ «<» и молча
+// потерять порог.
+func cutPair(line string) (key, value string, found bool) {
+	offset := 0
+	if strings.HasPrefix(line, "<=") || strings.HasPrefix(line, ">=") {
+		offset = len("<=")
+	}
+	key, value, found = strings.Cut(line[offset:], "=")
+	return line[:offset] + key, value, found
 }
 
 // parseAddr разбирает адрес элемента "563:57".

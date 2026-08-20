@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -49,6 +50,8 @@ func (l Link) ToWire(payload []byte) (Wire, error) {
 	value := raw
 	if mapped, ok := l.Values[strings.TrimSpace(raw)]; ok {
 		value = mapped
+	} else if mapped, ok := bucket(l.Values, raw); ok {
+		value = mapped
 	}
 
 	switch l.Encode {
@@ -61,6 +64,78 @@ func (l Link) ToWire(payload []byte) (Wire, error) {
 	default:
 		return Wire{}, fmt.Errorf("форма значения %q не поддерживается", l.Encode)
 	}
+}
+
+// Пороговые ключи таблицы значений.
+//
+// Строка сравнивается целиком, и для чисел этого мало: уровень сигнала WiFi
+// или заряд батареи хочется видеть словом, а слово зависит от диапазона, а не
+// от точного совпадения. Поэтому ключ может быть порогом:
+//
+//	<=-90 = нет сигнала
+//	<=-80 = плохой
+//	<=-70 = средний
+//	<=-60 = хороший
+//	*     = отличный
+//
+// Пороги «меньше либо равно» проверяются по возрастанию, «больше либо равно» —
+// по убыванию: срабатывает ближайший, а не первый попавшийся. Звёздочка — то,
+// что не попало ни в один диапазон.
+const (
+	bucketLE  = "<="
+	bucketGE  = ">="
+	bucketAny = "*"
+)
+
+// bucket ищет значение по порогам таблицы.
+func bucket(values map[string]string, raw string) (string, bool) {
+	if len(values) == 0 {
+		return "", false
+	}
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil {
+		// Не число — порогам сравнивать нечего, и звёздочка тут ни при чём:
+		// она про диапазоны, а не про «любое значение».
+		return "", false
+	}
+
+	type rule struct {
+		threshold float64
+		text      string
+	}
+	var le, ge []rule
+
+	for key, text := range values {
+		switch {
+		case strings.HasPrefix(key, bucketLE):
+			if t, err := strconv.ParseFloat(strings.TrimSpace(key[len(bucketLE):]), 64); err == nil {
+				le = append(le, rule{t, text})
+			}
+		case strings.HasPrefix(key, bucketGE):
+			if t, err := strconv.ParseFloat(strings.TrimSpace(key[len(bucketGE):]), 64); err == nil {
+				ge = append(ge, rule{t, text})
+			}
+		}
+	}
+
+	sort.Slice(le, func(i, j int) bool { return le[i].threshold < le[j].threshold })
+	for _, r := range le {
+		if v <= r.threshold {
+			return r.text, true
+		}
+	}
+
+	sort.Slice(ge, func(i, j int) bool { return ge[i].threshold > ge[j].threshold })
+	for _, r := range ge {
+		if v >= r.threshold {
+			return r.text, true
+		}
+	}
+
+	if text, ok := values[bucketAny]; ok && (len(le) > 0 || len(ge) > 0) {
+		return text, true
+	}
+	return "", false
 }
 
 // extract достаёт значение из нагрузки.
