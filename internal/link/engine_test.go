@@ -431,3 +431,121 @@ func TestEngineSkipsMissingElement(t *testing.T) {
 		t.Errorf("после появления элемента отправлено %d значений", sender.count())
 	}
 }
+
+// Нажатие уезжает устройству абсолютной командой, а не «переключить»:
+// устройство отчиталось «включено», значит нажатие означает «выключить».
+func TestToggleBecomesAbsoluteCommand(t *testing.T) {
+	e, _, mq := newTestEngine()
+	e.SetLinks([]Link{
+		{ID: 1, Enabled: true, Direction: In,
+			Topic: "shellies/shelly25-A1/relay/0", Encode: EncodeByte,
+			Values:   map[string]string{"on": "1", "off": "0"},
+			TargetID: 563, TargetSubID: 57},
+		{ID: 2, Enabled: true, Direction: Out,
+			Topic: "shellies/shelly25-A1/relay/0/command", Decode: DecodeLamp,
+			Values:   map[string]string{StateToggle: "toggle", StateOn: "on", StateOff: "off"},
+			TargetID: 563, TargetSubID: 57},
+	})
+
+	ctx := context.Background()
+	e.OnMessage(ctx, "shellies/shelly25-A1/relay/0", []byte("on"))
+	e.OnEvent(ctx, Event{ID: 563, SubID: 57, Payload: []byte{0xFF}})
+
+	msgs := mq.all()
+	if len(msgs) != 1 {
+		t.Fatalf("опубликовано %d сообщений, ожидалось 1", len(msgs))
+	}
+	if msgs[0].payload != "off" {
+		t.Errorf("нагрузка = %q, ожидалось %q: относительная команда на слабом WiFi уводит фазу",
+			msgs[0].payload, "off")
+	}
+}
+
+// Пока устройство молчит, повторное нажатие повторяет ту же команду, а не шлёт
+// обратную. Именно это чинит потерянную публикацию: нажали второй раз — и реле
+// всё-таки приехало в нужное положение.
+func TestToggleRepeatsUntilDeviceReports(t *testing.T) {
+	e, _, mq := newTestEngine()
+	e.SetLinks([]Link{
+		{ID: 1, Enabled: true, Direction: In,
+			Topic: "shellies/shelly25-A1/relay/0", Encode: EncodeByte,
+			Values:   map[string]string{"on": "1", "off": "0"},
+			TargetID: 563, TargetSubID: 57},
+		{ID: 2, Enabled: true, Direction: Out, OnlyChanged: true,
+			Topic: "shellies/shelly25-A1/relay/0/command", Decode: DecodeLamp,
+			Values:   map[string]string{StateToggle: "toggle", StateOn: "on", StateOff: "off"},
+			TargetID: 563, TargetSubID: 57},
+	})
+
+	ctx := context.Background()
+	e.OnMessage(ctx, "shellies/shelly25-A1/relay/0", []byte("off"))
+	e.OnEvent(ctx, Event{ID: 563, SubID: 57, Payload: []byte{0xFF}})
+	e.OnEvent(ctx, Event{ID: 563, SubID: 57, Payload: []byte{0xFF}})
+
+	msgs := mq.all()
+	if len(msgs) != 2 {
+		t.Fatalf("опубликовано %d сообщений, ожидалось 2: нажатие не отсеивается как повтор", len(msgs))
+	}
+	for i, m := range msgs {
+		if m.payload != "on" {
+			t.Errorf("нажатие %d ушло как %q, ожидалось %q", i+1, m.payload, "on")
+		}
+	}
+}
+
+// Устройство отчиталось «включено», а потом само выключилось — состояние
+// берётся свежее, и нажатие означает «включить».
+func TestAbsoluteCommandFollowsDevice(t *testing.T) {
+	e, _, mq := newTestEngine()
+	e.SetLinks([]Link{
+		{ID: 1, Enabled: true, Direction: In,
+			Topic: "shellies/shelly25-A1/relay/0", Encode: EncodeByte,
+			Values:   map[string]string{"on": "1", "off": "0"},
+			TargetID: 563, TargetSubID: 57},
+		{ID: 2, Enabled: true, Direction: Out,
+			Topic: "shellies/shelly25-A1/relay/0/command", Decode: DecodeLamp,
+			Values:   map[string]string{StateToggle: "toggle", StateOn: "on", StateOff: "off"},
+			TargetID: 563, TargetSubID: 57},
+	})
+
+	ctx := context.Background()
+	e.OnMessage(ctx, "shellies/shelly25-A1/relay/0", []byte("on"))
+	e.OnMessage(ctx, "shellies/shelly25-A1/relay/0", []byte("off"))
+	e.OnEvent(ctx, Event{ID: 563, SubID: 57, Payload: []byte{0xFF}})
+
+	msgs := mq.all()
+	if len(msgs) != 1 {
+		t.Fatalf("опубликовано %d сообщений, ожидалось 1", len(msgs))
+	}
+	if msgs[0].payload != "on" {
+		t.Errorf("нагрузка = %q, ожидалось %q", msgs[0].payload, "on")
+	}
+}
+
+// Устройство знает только «переключить» — выдумывать за него абсолютную
+// команду нельзя: строка уедет на шину и не сделает ничего.
+func TestToggleStaysWhenDeviceHasNoAbsolute(t *testing.T) {
+	e, _, mq := newTestEngine()
+	e.SetLinks([]Link{
+		{ID: 1, Enabled: true, Direction: In,
+			Topic: "zigbee2mqtt/выключатель", Encode: EncodeByte,
+			Values:   map[string]string{"ON": "1"},
+			TargetID: 563, TargetSubID: 57},
+		{ID: 2, Enabled: true, Direction: Out,
+			Topic: "zigbee2mqtt/выключатель/set", Decode: DecodeLamp,
+			Values:   map[string]string{StateToggle: `{"state":"TOGGLE"}`},
+			TargetID: 563, TargetSubID: 57},
+	})
+
+	ctx := context.Background()
+	e.OnMessage(ctx, "zigbee2mqtt/выключатель", []byte("ON"))
+	e.OnEvent(ctx, Event{ID: 563, SubID: 57, Payload: []byte{0xFF}})
+
+	msgs := mq.all()
+	if len(msgs) != 1 {
+		t.Fatalf("опубликовано %d сообщений, ожидалось 1", len(msgs))
+	}
+	if msgs[0].payload != `{"state":"TOGGLE"}` {
+		t.Errorf("нагрузка = %q, ожидалось переключение как было", msgs[0].payload)
+	}
+}

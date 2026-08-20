@@ -73,6 +73,10 @@ type Engine struct {
 	last    map[int64]string
 	lastOut map[int64]string
 
+	// state — последнее состояние, о котором отчиталось само устройство, по
+	// адресу элемента. Из него нажатие разворачивается в абсолютную команду.
+	state map[string]string
+
 	stats map[int64]*Stats
 
 	// known сообщает, есть ли элемент с таким адресом в описании дома.
@@ -109,6 +113,7 @@ func NewEngine(sh Sender, mq Publisher, log *slog.Logger) *Engine {
 		out:      make(map[string][]Link),
 		last:     make(map[int64]string),
 		lastOut:  make(map[int64]string),
+		state:    make(map[string]string),
 		echo:     make(map[string]echoEntry),
 		stats:    make(map[int64]*Stats),
 		reported: make(map[int64]bool),
@@ -174,6 +179,16 @@ func (e *Engine) SetLinks(links []Link) {
 	for id := range e.lastOut {
 		if _, ok := alive[id]; !ok {
 			delete(e.lastOut, id)
+		}
+	}
+
+	addrs := make(map[string]struct{}, len(links))
+	for _, l := range links {
+		addrs[l.Addr()] = struct{}{}
+	}
+	for addr := range e.state {
+		if _, ok := addrs[addr]; !ok {
+			delete(e.state, addr)
 		}
 	}
 }
@@ -274,6 +289,15 @@ func (e *Engine) applyIn(ctx context.Context, l Link, payload []byte) {
 
 	e.mu.Lock()
 	e.last[l.ID] = key
+	// Однобайтовое состояние — это то, чем сейчас живёт устройство: реле
+	// включено или выключено. Из него разворачивается нажатие в команду.
+	if wire.Kind == EncodeByte && len(wire.Bytes) == 1 {
+		if wire.Bytes[0] == 0 {
+			e.state[l.Addr()] = StateOff
+		} else {
+			e.state[l.Addr()] = StateOn
+		}
+	}
 	e.mu.Unlock()
 
 	e.count(l.ID, func(s *Stats) {
@@ -329,7 +353,7 @@ func (e *Engine) applyOut(l Link, ev Event) {
 		e.fail(l, err, "чтение значения элемента")
 		return
 	}
-	payload := l.MapValue(value)
+	payload := l.MapValue(e.absolute(l, value))
 
 	// Состояния элементов приезжают снова и снова — в каждом ответе на запрос
 	// состояний. Без отсева повторов шлюз слал бы команду по каждой лампе на
@@ -363,6 +387,52 @@ func (e *Engine) applyOut(l Link, ev Event) {
 		s.LastError = ""
 	})
 	e.log.Debug("команда опубликована", "link", l.Title(), "payload", payload)
+}
+
+// absolute разворачивает нажатие в команду «включить» или «выключить».
+//
+// Умный дом присылает на нажатие лампы 0xFF — «переключить», и раньше оно так
+// и уезжало устройству словом toggle. Команда относительная, и на слабом WiFi
+// одна потерянная публикация уводит фазу навсегда: элемент показывает
+// «включено», реле выключено, а Gen1 публикует состояние только при изменении
+// и сам ничего не исправит. Следующее нажатие срабатывает наоборот — ровно то,
+// что на объекте выглядит как «канал слушается через раз».
+//
+// Абсолютная команда этим не болеет: потерялась — повторное нажатие всё равно
+// приведёт реле в нужное положение. Разворачиваем по последнему состоянию,
+// о котором отчиталось само устройство.
+//
+// Своё же нажатие в state не записывается намеренно. Иначе после потерянной
+// команды шлюз считал бы, что реле уже переключилось, и на повторное нажатие
+// послал бы обратную команду вместо того, чтобы повторить пропавшую. Пока
+// устройство молчит, нажатия повторяют одно и то же — это и есть починка.
+func (e *Engine) absolute(l Link, value string) string {
+	if value != StateToggle {
+		return value
+	}
+
+	e.mu.RLock()
+	known := e.state[l.Addr()]
+	e.mu.RUnlock()
+
+	var want string
+	switch known {
+	case StateOn:
+		want = StateOff
+	case StateOff:
+		want = StateOn
+	default:
+		// Состояния не знаем: устройство ещё не отчитывалось или связка
+		// направления In к этому элементу не заведена вовсе.
+		return value
+	}
+
+	// Устройство должно понимать абсолютную команду. Нет её в таблице —
+	// переключение остаётся переключением, это лучше выдуманной строки.
+	if _, ok := l.Values[want]; !ok {
+		return value
+	}
+	return want
 }
 
 // markOwn запоминает собственную запись в элемент.
