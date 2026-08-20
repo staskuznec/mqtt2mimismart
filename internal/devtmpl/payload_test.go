@@ -39,6 +39,18 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 		tasmotaState = `{"Time":"2018.02.15 01:00:50","Uptime":"1 02:33:26",` +
 			`"POWER":"OFF","Wifi":{"AP":1,"SSId":"XXX","RSSI":72,"Signal":-64}}`
 
+		// Снимок с живого объекта: Shelly 2.5 в режиме реле, топик info.
+		// Имя сети, адреса и MAC заменены, остальное как пришло с шины.
+		shelly25Info = `{"wifi_sta":{"connected":true,"ssid":"home",` +
+			`"ip":"192.168.20.222","rssi":-70},"cloud":{"enabled":false,` +
+			`"connected":false},"mqtt":{"connected":true},"time":"23:48",` +
+			`"serial":1,"has_update":false,"mac":"000000000000",` +
+			`"relays":[{"ison":false,"overpower":false,"is_valid":true,"source":"http"},` +
+			`{"ison":true,"overpower":false,"is_valid":true,"source":"mqtt"}],` +
+			`"meters":[{"power":0.00,"overpower":0.00,"is_valid":true,"total":3},` +
+			`{"power":0.00,"overpower":0.00,"is_valid":true,"total":0}],` +
+			`"temperature":53.87,"overtemperature":false,"tmp":{"tC":53.87,"is_valid":true}}`
+
 		tasmotaTH = `{"Time":"2018.02.01 22:52:09",` +
 			`"AM2301":{"Temperature":15.5,"Humidity":50.6},"TempUnit":"C"}`
 
@@ -100,6 +112,13 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 			`{"sta_ip":"192.168.1.44","status":"got ip","ssid":"home","rssi":-74}`, "нормальный", ""},
 		{"shellyplus1", "Уровень сигнала WiFi",
 			`{"sta_ip":"192.168.1.44","status":"got ip","ssid":"home","rssi":-88}`, "плохой", ""},
+
+		// Живой снимок с объекта: топик info Shelly 2.5 в режиме реле. Поля
+		// идут в том же порядке, что и на устройстве, — по нему видно, что
+		// wifi_sta.rssi лежит первым уровнем вложенности, а не в статусе
+		// каждого реле.
+		{"shelly25-relay", "Уровень сигнала WiFi", shelly25Info, "нормальный", ""},
+		{"shelly25-relay", "Температура устройства", "53.87", "53.87", "de 35"},
 
 		// Gen1 кладёт то же самое в полный статус на топике info, полем
 		// wifi_sta.rssi. Реле, которое подмигивает, обычно живёт как раз на
