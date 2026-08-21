@@ -42,12 +42,37 @@ type TopicInfo struct {
 	LastAt      time.Time
 }
 
+// Hidden — правило, по которому топик не запоминается вовсе.
+//
+// Шина чужая: на объекте по ней ходят датчики, шлюзы и опросчики, к умному
+// дому отношения не имеющие. Убрать такой топик из снифера мало — он вернётся
+// со следующим сообщением, а публикуются они каждые несколько секунд.
+type Hidden struct {
+	// Pattern — точный топик либо мастер-топик устройства.
+	Pattern string
+
+	// Tree — Pattern считать мастер-топиком: скрыто и всё, что под ним.
+	Tree bool
+}
+
+// covers сообщает, попадает ли топик под правило.
+//
+// Граница уровня обязательна: "shellies/shelly1" не должен утаскивать за
+// собой "shellies/shelly1pm-a8", у которого просто общее начало строки.
+func (h Hidden) covers(topic string) bool {
+	if h.Pattern == topic {
+		return true
+	}
+	return h.Tree && strings.HasPrefix(topic, h.Pattern+"/")
+}
+
 // registry — то, что видно на шине. Заполняется на каждом сообщении, читается
 // веб-интерфейсом.
 type registry struct {
 	mu       sync.RWMutex
 	topics   map[string]*TopicInfo
 	overflow uint64 // сколько топиков не запомнили из-за предела
+	hidden   []Hidden
 }
 
 func newRegistry() *registry {
@@ -58,6 +83,15 @@ func newRegistry() *registry {
 func (r *registry) observe(m Message) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	// Скрытое не запоминается вовсе, а не прячется при показе: снифер держит
+	// последнюю нагрузку каждого топика, и место в нём кончается — предел
+	// один на всю шину, и занимать его чужим опросчиком незачем.
+	for _, h := range r.hidden {
+		if h.covers(m.Topic) {
+			return
+		}
+	}
 
 	info, ok := r.topics[m.Topic]
 	if !ok {
@@ -110,13 +144,48 @@ func (r *registry) Topic(topic string) (TopicInfo, bool) {
 	return *info, true
 }
 
-// forget очищает снифер. Нужен кнопке «очистить» в вебе: после настройки
+// forgetAll очищает снифер. Нужен кнопке «очистить» в вебе: после настройки
 // связок список удобно обнулить и посмотреть, что реально ходит сейчас.
-func (r *registry) forget() {
+func (r *registry) forgetAll() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.topics = make(map[string]*TopicInfo)
 	r.overflow = 0
+}
+
+// forget убирает из снифера то, что подходит под правило, и отвечает, сколько
+// топиков убрал. Правило при этом не запоминается: вернуть топик может любое
+// следующее сообщение — это и нужно, когда убирают остаток от устройства,
+// которого на шине уже нет.
+func (r *registry) forget(h Hidden) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	n := 0
+	for topic := range r.topics {
+		if h.covers(topic) {
+			delete(r.topics, topic)
+			n++
+		}
+	}
+	return n
+}
+
+// setHidden заменяет список скрытого и сразу убирает из снифера то, что под
+// него попало: иначе скрытый топик оставался бы на странице до перезапуска.
+func (r *registry) setHidden(rules []Hidden) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.hidden = append([]Hidden(nil), rules...)
+	for topic := range r.topics {
+		for _, h := range r.hidden {
+			if h.covers(topic) {
+				delete(r.topics, topic)
+				break
+			}
+		}
+	}
 }
 
 // stats отдаёт размер снифера и число незапомненных топиков.

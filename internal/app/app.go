@@ -174,6 +174,13 @@ func (a *App) connect(ctx context.Context) error {
 	a.engine = engine
 	a.mu.Unlock()
 
+	// Скрытое человек убирал со страницы один раз и ожидает, что оно убрано:
+	// молча вернуть чужую шину после перезапуска — значит заставить чистить
+	// список заново.
+	if err := a.ApplyHidden(ctx); err != nil {
+		a.log.Warn("скрытые топики не прочитаны, снифер запоминает всё", "err", err)
+	}
+
 	return a.ReloadLinks(ctx)
 }
 
@@ -209,6 +216,40 @@ func (a *App) topics() []mqtt.TopicInfo {
 		return nil
 	}
 	return c.Topics()
+}
+
+// forgetTopic убирает топик или мастер-топик из снифера и отвечает, сколько
+// строк убрал.
+func (a *App) forgetTopic(h mqtt.Hidden) int {
+	_, c, _ := a.clients()
+	if c == nil {
+		return 0
+	}
+	return c.ForgetTopic(h)
+}
+
+// ApplyHidden перечитывает скрытые топики из базы и отдаёт их сниферу.
+//
+// Вызывается при подключении и после каждой правки списка в вебе. Снифер живёт
+// в памяти и поднимается пустым, а список — в базе: без этого чужая шина
+// возвращалась бы на страницу целиком после каждого обрыва связи.
+func (a *App) ApplyHidden(ctx context.Context) error {
+	list, err := a.db.HiddenTopics(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, c, _ := a.clients()
+	if c == nil {
+		return nil
+	}
+
+	rules := make([]mqtt.Hidden, 0, len(list))
+	for _, h := range list {
+		rules = append(rules, mqtt.Hidden{Pattern: h.Pattern, Tree: h.Tree})
+	}
+	c.SetHidden(rules)
+	return nil
 }
 
 func (a *App) linkStats() map[int64]link.Stats {
@@ -455,6 +496,8 @@ func (a *App) serve(ctx context.Context) error {
 		Topics: a.topics,
 		Links:  a.linkStats,
 	}
+	status.ForgetTopic = a.forgetTopic
+	status.ApplyHidden = a.ApplyHidden
 	status.Elements = a.Elements
 	status.Reload = a.ReloadLinks
 	status.Update = a.update.Info

@@ -92,6 +92,12 @@
   details.group > summary::before { content: "▸"; font-size: 11px; width: 9px; }
   details.group[open] > summary::before { content: "▾"; }
   details.group > summary:hover { color: var(--fg); }
+  /* Уборка в заголовке группы. Действия прижаты вправо: заголовок с
+     мастер-топиком читается слева направо, и кнопки посреди строки рвали бы
+     его пополам. */
+  details.group > summary .actions { margin-left: auto; }
+  details.group > summary .actions form { display: contents; }
+
   .badge {
     padding: 1px 8px; border-radius: 999px;
     background: var(--line-soft); color: var(--muted); font-size: 12px;

@@ -119,7 +119,15 @@ func (c *Client) Topics() []TopicInfo { return c.topics.Topics() }
 func (c *Client) Topic(topic string) (TopicInfo, bool) { return c.topics.Topic(topic) }
 
 // ForgetTopics очищает снифер.
-func (c *Client) ForgetTopics() { c.topics.forget() }
+func (c *Client) ForgetTopics() { c.topics.forgetAll() }
+
+// ForgetTopic убирает из снифера один топик или мастер-топик целиком и
+// отвечает, сколько строк убрал.
+func (c *Client) ForgetTopic(h Hidden) int { return c.topics.forget(h) }
+
+// SetHidden задаёт, что снифер не запоминает. Список приходит из базы и
+// применяется целиком: правило снимают там же, где ставят.
+func (c *Client) SetHidden(rules []Hidden) { c.topics.setHidden(rules) }
 
 // Status возвращает снимок состояния.
 func (c *Client) Status() Status {

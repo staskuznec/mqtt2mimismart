@@ -185,7 +185,7 @@ func TestRegistryForget(t *testing.T) {
 	r := newRegistry()
 	r.observe(Message{Topic: "тест", Payload: []byte("1"), At: time.Now()})
 
-	r.forget()
+	r.forgetAll()
 
 	if known, overflow := r.stats(); known != 0 || overflow != 0 {
 		t.Errorf("после очистки known=%d overflow=%d, ожидались нули", known, overflow)
@@ -203,4 +203,67 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b)
+}
+
+// Скрытый топик не запоминается вовсе. Иначе смысла в скрытии нет: чужой
+// датчик публикует каждые несколько секунд и вернулся бы на страницу сразу.
+func TestRegistrySkipsHidden(t *testing.T) {
+	r := newRegistry()
+	now := time.Now()
+
+	r.setHidden([]Hidden{{Pattern: "чужое/датчик", Tree: true}})
+	r.observe(Message{Topic: "чужое/датчик/температура", Payload: []byte("21"), At: now})
+	r.observe(Message{Topic: "своё/реле", Payload: []byte("on"), At: now})
+
+	if _, ok := r.Topic("чужое/датчик/температура"); ok {
+		t.Error("скрытый топик запомнен")
+	}
+	if _, ok := r.Topic("своё/реле"); !ok {
+		t.Error("свой топик потерян вместе с чужими")
+	}
+}
+
+// Скрытие убирает и то, что снифер уже запомнил: иначе топик оставался бы на
+// странице до перезапуска службы, и кнопка выглядела бы сломанной.
+func TestSetHiddenDropsRemembered(t *testing.T) {
+	r := newRegistry()
+	r.observe(Message{Topic: "чужое/датчик/температура", Payload: []byte("21"), At: time.Now()})
+
+	r.setHidden([]Hidden{{Pattern: "чужое/датчик", Tree: true}})
+
+	if known, _ := r.stats(); known != 0 {
+		t.Errorf("после скрытия в снифере %d топиков, ожидался ноль", known)
+	}
+}
+
+// Мастер-топик режется по границе уровня. Общее начало строки — не родство:
+// "shellies/shelly1" не должен утащить с собой соседний "shellies/shelly1pm-a8".
+func TestHiddenKeepsLevelBoundary(t *testing.T) {
+	r := newRegistry()
+	now := time.Now()
+
+	r.observe(Message{Topic: "shellies/shelly1/relay/0", Payload: []byte("on"), At: now})
+	r.observe(Message{Topic: "shellies/shelly1pm-a8/relay/0", Payload: []byte("on"), At: now})
+
+	if n := r.forget(Hidden{Pattern: "shellies/shelly1", Tree: true}); n != 1 {
+		t.Errorf("убрано топиков: %d, ожидался один", n)
+	}
+	if _, ok := r.Topic("shellies/shelly1pm-a8/relay/0"); !ok {
+		t.Error("сосед с общим началом имени убран заодно")
+	}
+}
+
+// Убранный топик возвращается со следующим сообщением: правило при этом не
+// запоминается, и остаток от снятого с шины устройства просто исчезает.
+func TestForgetLetsTopicComeBack(t *testing.T) {
+	r := newRegistry()
+	now := time.Now()
+
+	r.observe(Message{Topic: "живое/реле", Payload: []byte("on"), At: now})
+	r.forget(Hidden{Pattern: "живое/реле"})
+	r.observe(Message{Topic: "живое/реле", Payload: []byte("off"), At: now.Add(time.Second)})
+
+	if _, ok := r.Topic("живое/реле"); !ok {
+		t.Error("топик не вернулся после нового сообщения — убирание сработало как скрытие")
+	}
 }

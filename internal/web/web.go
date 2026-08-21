@@ -35,6 +35,12 @@ type Status struct {
 	Links    func() map[int64]link.Stats
 	Elements func() []logic.Element
 
+	// ForgetTopic убирает топик из снифера, ApplyHidden перечитывает из базы
+	// список того, что снифер больше не запоминает. Уборка на странице
+	// «Топики» делается этой парой: убрать сейчас — и не пускать обратно.
+	ForgetTopic func(mqtt.Hidden) int
+	ApplyHidden func(context.Context) error
+
 	// Update — что известно про доступную версию, CheckUpdates освежает это.
 	Update       func() update.Info
 	CheckUpdates func()
@@ -80,6 +86,9 @@ func Handler(log *slog.Logger, db *store.Store, version, basePath string, status
 	mux.HandleFunc("GET /settings", s.pageSettings)
 	mux.HandleFunc("POST /settings", s.saveSettings)
 	mux.HandleFunc("GET /topics", s.pageTopics)
+	mux.HandleFunc("POST /topics/forget", s.forgetTopic)
+	mux.HandleFunc("POST /topics/hide", s.hideTopic)
+	mux.HandleFunc("POST /topics/show", s.showTopic)
 	mux.HandleFunc("GET /links", s.pageLinks)
 	mux.HandleFunc("GET /links/new", s.pageLinkForm)
 	mux.HandleFunc("GET /links/{id}", s.pageLinkForm)

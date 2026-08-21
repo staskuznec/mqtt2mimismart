@@ -9,10 +9,34 @@
   по заголовку, и страница помнит, что вы открыли. Длинное значение показано
   началом: щёлкните по нему, чтобы увидеть целиком.
 </p>
+<p class="hint">
+  Лишнее убирается двумя способами. <b>Убрать</b> вычёркивает строку сейчас —
+  этого хватает остаткам от устройства, которого на шине больше нет: возвращать
+  их некому. <b>Скрыть</b> заносит топик в список, и шлюз перестаёт его
+  запоминать вовсе, — так убирают чужое устройство, которое продолжает
+  публиковать и иначе вернётся через секунду. Топик, с которого работает
+  связка, не убрать ни тем, ни другим: сначала связка.
+</p>
+
+{{with .Error}}<p class="msg bad">{{.}}</p>{{end}}
 
 {{range .Groups}}
   <details class="group" data-prefix="{{.Prefix}}"{{if not .Collapsed}} open{{end}}>
-  <summary><span class="mono">{{.Prefix}}</span><span class="badge">{{len .Topics}}</span></summary>
+  <summary><span class="mono">{{.Prefix}}</span><span class="badge">{{len .Topics}}</span>
+    <span class="actions" onclick="event.stopPropagation()">
+      <form method="post" action="topics/forget"
+            onsubmit="return confirm('Убрать со страницы все топики {{.Prefix}}? Устройство, которое ещё публикует, вернётся сюда со следующим сообщением.')">
+        <input type="hidden" name="topic" value="{{.Prefix}}">
+        <input type="hidden" name="tree" value="1">
+        <button type="submit" class="link">убрать</button>
+      </form>
+      <form method="post" action="topics/hide"
+            onsubmit="return confirm('Скрыть {{.Prefix}} со всем, что под ним? Шлюз перестанет запоминать эти топики, пока не вернёте их из списка скрытых.')">
+        <input type="hidden" name="topic" value="{{.Prefix}}">
+        <input type="hidden" name="tree" value="1">
+        <button type="submit" class="link danger">скрыть</button>
+      </form>
+    </span></summary>
   <div class="tablewrap">
   <table>
     <thead><tr>
@@ -27,7 +51,18 @@
         <td>{{.Kind}}{{if .Retained}} · retain{{end}}</td>
         <td class="num" data-field="count">{{.Count}}</td>
         <td class="hint" data-field="ago">{{.Ago}}</td>
-        <td><a href="links/new?topic={{.Topic}}">Связать</a></td>
+        <td style="white-space:nowrap">
+          <a href="links/new?topic={{.Topic}}">Связать</a>
+          <form method="post" action="topics/forget" style="display:inline">
+            <input type="hidden" name="topic" value="{{.Topic}}">
+            <button type="submit" class="link">убрать</button>
+          </form>
+          <form method="post" action="topics/hide" style="display:inline"
+                onsubmit="return confirm('Скрыть {{.Topic}}? Шлюз перестанет запоминать этот топик, пока не вернёте его из списка скрытых.')">
+            <input type="hidden" name="topic" value="{{.Topic}}">
+            <button type="submit" class="link danger">скрыть</button>
+          </form>
+        </td>
       </tr>
     {{end}}
     </tbody>
@@ -39,6 +74,36 @@
   Пока пусто. Либо шлюз не подключён к брокеру — смотрите
   <a href=".">Обзор</a>, — либо по шине никто ничего не публикует.
 </p>
+{{end}}
+
+{{if .Hidden}}
+<details class="group">
+  <summary>Скрыто<span class="badge">{{len .Hidden}}</span></summary>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Топик</th><th>Что скрыто</th><th>Когда</th><th></th></tr></thead>
+    <tbody>
+    {{range .Hidden}}
+      <tr>
+        <td class="mono">{{.Topic}}</td>
+        <td class="hint">{{if .Tree}}вместе со всем, что под ним{{else}}только этот топик{{end}}</td>
+        <td class="hint">{{.Since}}</td>
+        <td>
+          <form method="post" action="topics/show" style="display:inline">
+            <input type="hidden" name="topic" value="{{.Topic}}">
+            <button type="submit" class="link">вернуть</button>
+          </form>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  <p class="hint">
+    Вернуть — значит снова запоминать: топик появится на странице, как только
+    устройство опубликует в него следующее сообщение.
+  </p>
+</details>
 {{end}}
 
 <script>

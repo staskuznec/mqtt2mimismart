@@ -237,6 +237,21 @@ type topicsData struct {
 	Groups     []topicGroup
 	Total      int
 	Overflow   uint64
+
+	// Hidden — то, что снифер больше не запоминает. Список показан на той же
+	// странице: скрытое, о котором негде вспомнить, через месяц выглядит как
+	// пропавший топик, и его идут искать в брокере.
+	Hidden []hiddenRow
+
+	// Error — почему уборка не вышла. Приезжает в адресе после отказа.
+	Error string
+}
+
+// hiddenRow — строка списка скрытого.
+type hiddenRow struct {
+	Topic string
+	Tree  bool // скрыт мастер-топик со всем, что под ним
+	Since string
 }
 
 // topicGroup — топики одного устройства, собранные по мастер-топику.
@@ -265,8 +280,12 @@ type topicRow struct {
 	Ago       string
 }
 
-func (s *server) pageTopics(w http.ResponseWriter, _ *http.Request) {
-	data := topicsData{Title: "Топики", Nav: "topics"}
+func (s *server) pageTopics(w http.ResponseWriter, r *http.Request) {
+	data := topicsData{
+		Title: "Топики", Nav: "topics",
+		Error:  r.URL.Query().Get("error"),
+		Hidden: s.hiddenRows(r),
+	}
 	if s.status.Topics == nil {
 		s.render(w, "topics", data)
 		return
@@ -304,6 +323,23 @@ func (s *server) pageTopics(w http.ResponseWriter, _ *http.Request) {
 		})
 	}
 	s.render(w, "topics", data)
+}
+
+// hiddenRows читает скрытое из базы.
+func (s *server) hiddenRows(r *http.Request) []hiddenRow {
+	list, err := s.db.HiddenTopics(r.Context())
+	if err != nil {
+		// Скрытое — украшение страницы: без него топики показать можно, а
+		// ронять раздел из-за него нельзя.
+		s.log.Error("чтение скрытых топиков", "err", err)
+		return nil
+	}
+
+	out := make([]hiddenRow, 0, len(list))
+	for _, h := range list {
+		out = append(out, hiddenRow{Topic: h.Pattern, Tree: h.Tree, Since: ago(h.Since)})
+	}
+	return out
 }
 
 // topicPrefix выделяет мастер-топик устройства — первые два уровня.

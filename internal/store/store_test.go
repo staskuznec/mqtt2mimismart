@@ -529,3 +529,50 @@ func TestReapplyKeepsLinksWhenDeviceUpdateFails(t *testing.T) {
 		t.Errorf("связок осталось %d, ожидалась одна: отказ стёр связки устройства", len(links))
 	}
 }
+
+// Скрытые топики переживают перезапуск, поэтому лежат в базе. Ширина правила
+// меняется на месте: скрыть отдельный топик, а потом всё устройство — обычный
+// ход, и второй нажатой кнопке незачем плодить вторую запись.
+func TestHiddenTopicsRoundTrip(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	if err := s.HideTopic(ctx, "чужое/датчик/температура", false); err != nil {
+		t.Fatalf("HideTopic: %v", err)
+	}
+	if err := s.HideTopic(ctx, "чужое/датчик/температура", true); err != nil {
+		t.Fatalf("HideTopic повторно: %v", err)
+	}
+
+	list, err := s.HiddenTopics(ctx)
+	if err != nil {
+		t.Fatalf("HiddenTopics: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("скрытых %d, ожидалась одна запись: %v", len(list), list)
+	}
+	if !list[0].Tree {
+		t.Error("повторное скрытие не расширило правило до мастер-топика")
+	}
+	if list[0].Since.IsZero() {
+		t.Error("не записано, когда скрыли")
+	}
+
+	if err := s.ShowTopic(ctx, "чужое/датчик/температура"); err != nil {
+		t.Fatalf("ShowTopic: %v", err)
+	}
+	list, err = s.HiddenTopics(ctx)
+	if err != nil {
+		t.Fatalf("HiddenTopics: %v", err)
+	}
+	if len(list) != 0 {
+		t.Errorf("после возврата осталось %d записей", len(list))
+	}
+}
+
+// Пустой топик в скрытые не принимаем: такое правило накрыло бы шину целиком.
+func TestHideTopicRejectsEmpty(t *testing.T) {
+	if err := open(t).HideTopic(context.Background(), "   ", false); err == nil {
+		t.Fatal("пустой топик принят, ожидалась ошибка")
+	}
+}
