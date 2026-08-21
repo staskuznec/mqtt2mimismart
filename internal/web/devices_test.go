@@ -7,9 +7,13 @@ import (
 )
 
 // Элемент под датчик протечки заводят виртуальным, а вид пишут в sub-type:
-// <item addr="50:12" name="душ Протечка" sub-type="leak-sensor" type="virtual"/>.
+// <item addr="50:12" name="душ Протечка" sub-type="lamp" type="virtual"/>.
 // Роль обязана такой элемент увидеть — иначе в форме устройства выбирать
 // нечего, и профиль применить не получается вовсе.
+//
+// Лампа тут не для красоты: виртуальным элементам документация разрешает
+// sub-type="lamp", а leak-sensor не разрешает вовсе — и настоящему leak-sensor
+// запись статуса означает время игнорирования протечки, а не протечку.
 func TestRoleTakesVirtualElementBySubType(t *testing.T) {
 	tmpl, err := devtmpl.Find("shellyflood")
 	if err != nil {
@@ -17,7 +21,7 @@ func TestRoleTakesVirtualElementBySubType(t *testing.T) {
 	}
 
 	all := []elementOption{
-		{Addr: "50:12", Label: "Душ → Протечка", Type: "virtual", Kind: "leak-sensor"},
+		{Addr: "50:12", Label: "Душ → Протечка", Type: "virtual", Kind: "lamp"},
 		{Addr: "50:13", Label: "Душ → Температура", Type: "virtual", Kind: "sensor"},
 		{Addr: "50:14", Label: "Двор → Полив", Type: "valve", Kind: "valve"},
 	}

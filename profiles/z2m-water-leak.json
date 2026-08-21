@@ -8,14 +8,13 @@
       "title": "Протечка",
       "form": "byte",
       "types": [
-        "leak-sensor",
         "door-sensor",
         "script",
         "lamp",
         "virtual"
       ],
       "required": true,
-      "hint": "1 — вода обнаружена"
+      "hint": "однобайтовый элемент: 1 — вода обнаружена. Виртуальная лампа (type=\"virtual\" sub-type=\"lamp\") подходит; элемент leak-sensor — нет: запись в него означает «игнорировать протечку», а не «протечка есть»"
     },
     {
       "key": "battery",

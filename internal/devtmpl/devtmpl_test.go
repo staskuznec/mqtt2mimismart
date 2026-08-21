@@ -262,3 +262,32 @@ func TestShellyProfilesReportSignal(t *testing.T) {
 		})
 	}
 }
+
+// Ни один профиль не должен целиться в элемент leak-sensor.
+//
+// Соблазн прямой: датчик протечки — значит элемент «протечка». Но шлюз шлёт
+// установку статуса, а у leak-sensor она означает не «протечка есть», а время
+// её игнорирования в секундах, и ноль — сброс тревоги (см. раздел «Элемент
+// leak-sensor» в документации MimiSmart). Единица от нашей связки включила бы
+// игнор на секунду, а не тревогу, и выглядело бы это как молчащий датчик.
+//
+// Однобайтовое состояние протечки принимает виртуальная лампа: sub-type="lamp"
+// для type="virtual" документация разрешает, а leak-sensor — нет.
+func TestNoProfileTargetsLeakSensor(t *testing.T) {
+	all, err := Builtin()
+	if err != nil {
+		t.Fatalf("Builtin: %v", err)
+	}
+
+	for _, tmpl := range all {
+		for _, role := range tmpl.Roles {
+			for _, kind := range role.Types {
+				if kind == "leak-sensor" {
+					t.Errorf("%s: роль %q предлагает элемент leak-sensor — "+
+						"запись в него означает игнорирование протечки, а не протечку",
+						tmpl.Key, role.Key)
+				}
+			}
+		}
+	}
+}
