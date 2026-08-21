@@ -19,8 +19,7 @@
       "form": "byte",
       "types": [
         "dimer-lamp",
-        "lamp",
-        "virtual"
+        "lamp"
       ]
     },
     {
@@ -46,8 +45,7 @@
       "types": [
         "lamp",
         "door-sensor",
-        "script",
-        "virtual"
+        "script"
       ]
     },
     {
@@ -57,8 +55,7 @@
       "types": [
         "lamp",
         "door-sensor",
-        "script",
-        "virtual"
+        "script"
       ]
     },
     {
@@ -78,8 +75,7 @@
       "types": [
         "lamp",
         "door-sensor",
-        "script",
-        "virtual"
+        "script"
       ]
     },
     {

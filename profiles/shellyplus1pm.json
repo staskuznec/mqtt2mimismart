@@ -63,8 +63,7 @@
         "switch",
         "door-sensor",
         "script",
-        "lamp",
-        "virtual"
+        "lamp"
       ]
     },
     {

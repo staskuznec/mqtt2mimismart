@@ -9,8 +9,7 @@
       "form": "byte",
       "types": [
         "lamp",
-        "script",
-        "virtual"
+        "script"
       ],
       "required": true
     },
@@ -20,8 +19,7 @@
       "form": "byte",
       "types": [
         "lamp",
-        "script",
-        "virtual"
+        "script"
       ]
     },
     {
@@ -30,8 +28,7 @@
       "form": "byte",
       "types": [
         "lamp",
-        "script",
-        "virtual"
+        "script"
       ]
     },
     {

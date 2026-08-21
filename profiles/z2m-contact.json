@@ -10,8 +10,7 @@
       "types": [
         "door-sensor",
         "script",
-        "lamp",
-        "virtual"
+        "lamp"
       ],
       "required": true,
       "hint": "1 — открыто"

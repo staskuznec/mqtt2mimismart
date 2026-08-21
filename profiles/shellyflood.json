@@ -10,8 +10,7 @@
       "types": [
         "lamp",
         "door-sensor",
-        "script",
-        "virtual"
+        "script"
       ],
       "required": true,
       "hint": "однобайтовый элемент: 1 — вода обнаружена. Виртуальная лампа (type=\"virtual\" sub-type=\"lamp\") подходит; элемент leak-sensor — нет: запись в него означает «игнорировать протечку», а не «протечка есть»"
