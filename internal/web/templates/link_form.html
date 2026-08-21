@@ -122,6 +122,11 @@
 
   <label class="check"><input type="checkbox" name="only_changed" {{if .Link.OnlyChanged}}checked{{end}}>
     отсеивать повторы <span>— без этого одно и то же значение уходит на каждом опросе</span></label>
+  <label class="check"><input type="checkbox" name="toggle_on_press" {{if .Link.ToggleOnPress}}checked{{end}}>
+    нажатие переключает элемент
+    <span>— для однобайтовых элементов, которые устройство зажигает и не гасит:
+      датчик протечки спит, воду вытерли, а «протечка» горит. Нажали в приложении —
+      шлюз запишет обратное значение</span></label>
   <label class="check"><input type="checkbox" name="enabled" {{if .Link.Enabled}}checked{{end}}> включена</label>
 
   </fieldset><fieldset><legend>Проба</legend>

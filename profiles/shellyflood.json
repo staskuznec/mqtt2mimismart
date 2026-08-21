@@ -83,7 +83,8 @@
         "true": "1",
         "false": "0"
       },
-      "only_changed": false
+      "only_changed": false,
+      "toggle_on_press": true
     },
     {
       "name": "Температура",

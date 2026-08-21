@@ -5,11 +5,16 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
 	shclient "github.com/staskuznec/shClientMimismart"
 )
+
+// pressByte — нажатие на элемент в приложении. Значение из скриптов умного
+// дома: opt(0)==0xff означает, что на элемент нажали, а не что он изменился.
+const pressByte = 0xFF
 
 // echoWindow — сколько собственная запись в элемент считается «своей».
 //
@@ -68,6 +73,10 @@ type Engine struct {
 	out  map[string][]Link
 	echo map[string]echoEntry
 
+	// press — связки «в дом», которые переключают элемент по нажатию, по
+	// адресу элемента.
+	press map[string][]Link
+
 	// Последнее доставленное значение по связкам, отдельно на каждое
 	// направление: в умный дом уходят байты, на шину — текст команды.
 	last    map[int64]string
@@ -115,6 +124,7 @@ func NewEngine(sh Sender, mq Publisher, log *slog.Logger) *Engine {
 		lastOut:  make(map[int64]string),
 		state:    make(map[string]string),
 		echo:     make(map[string]echoEntry),
+		press:    make(map[string][]Link),
 		stats:    make(map[int64]*Stats),
 		reported: make(map[int64]bool),
 	}
@@ -148,6 +158,7 @@ func (e *Engine) elementExists(l Link) bool {
 func (e *Engine) SetLinks(links []Link) {
 	in := make([]Link, 0, len(links))
 	out := make(map[string][]Link)
+	press := make(map[string][]Link)
 
 	for _, l := range links {
 		if !l.Enabled {
@@ -156,6 +167,12 @@ func (e *Engine) SetLinks(links []Link) {
 		switch l.Direction {
 		case In:
 			in = append(in, l)
+			// Связка «в дом» обычно про элемент ничего не слышит. С
+			// переключением нажатием — слышит: нажатие приходит тем же
+			// событием, что и состояние.
+			if l.ToggleOnPress {
+				press[l.Addr()] = append(press[l.Addr()], l)
+			}
 		case Out:
 			out[l.Addr()] = append(out[l.Addr()], l)
 		}
@@ -163,7 +180,7 @@ func (e *Engine) SetLinks(links []Link) {
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.in, e.out = in, out
+	e.in, e.out, e.press = in, out, press
 
 	// Кэш последних значений чистим по связкам, которых больше нет: иначе он
 	// растёт бесконечно, а при возврате удалённой связки хранил бы прошлое.
@@ -311,7 +328,7 @@ func (e *Engine) applyIn(ctx context.Context, l Link, payload []byte) {
 }
 
 // OnEvent разбирает изменение элемента умного дома и публикует команды.
-func (e *Engine) OnEvent(_ context.Context, ev Event) {
+func (e *Engine) OnEvent(ctx context.Context, ev Event) {
 	// Снимок состояний — не изменение. Транслировать его наружу означало бы
 	// при каждом подключении щёлкнуть всеми реле на объекте.
 	if ev.Sync {
@@ -322,10 +339,11 @@ func (e *Engine) OnEvent(_ context.Context, ev Event) {
 
 	e.mu.RLock()
 	links := e.out[addr]
+	press := e.press[addr]
 	own, hasOwn := e.echo[addr]
 	e.mu.RUnlock()
 
-	if len(links) == 0 {
+	if len(links) == 0 && len(press) == 0 {
 		return
 	}
 
@@ -339,9 +357,72 @@ func (e *Engine) OnEvent(_ context.Context, ev Event) {
 		return
 	}
 
+	// Нажатие на элемент, который ведёт сам шлюз: устройство его зажгло и не
+	// гасит, а виртуальный элемент по нажатию сам не меняется — статус ему
+	// обязан прислать тот, кто его ведёт.
+	for _, l := range press {
+		e.applyPress(ctx, l, ev)
+	}
+
 	for _, l := range links {
 		e.applyOut(l, ev)
 	}
+}
+
+// applyPress переключает элемент в ответ на нажатие в приложении.
+func (e *Engine) applyPress(ctx context.Context, l Link, ev Event) {
+	// Нас интересует только нажатие. Обычное состояние элемента приходит тем
+	// же событием, и переключать элемент в ответ на его же статус означало бы
+	// вечный обмен: мы пишем — сервер отвечает — мы снова пишем.
+	if len(ev.Payload) != 1 || ev.Payload[0] != pressByte {
+		return
+	}
+
+	e.mu.RLock()
+	known := e.state[l.Addr()]
+	e.mu.RUnlock()
+
+	// Состояние знаем по собственным записям. Не знаем — считаем, что элемент
+	// горит: нажимают на такой элемент затем, чтобы погасить тревогу, и это
+	// единственное осмысленное действие при неизвестном состоянии.
+	var next byte
+	if known == StateOff {
+		next = 1
+	}
+
+	e.count(l.ID, func(s *Stats) { s.Matched++ })
+
+	value, err := shclient.Raw(l.TargetID, l.TargetSubID, []byte{next})
+	if err != nil {
+		e.fail(l, err, "сборка пакета")
+		return
+	}
+
+	key := hex.EncodeToString([]byte{next})
+	e.markOwn(l.Addr(), key)
+
+	if err := e.sh.Send(ctx, value); err != nil {
+		e.fail(l, err, "отправка в умный дом")
+		return
+	}
+
+	e.mu.Lock()
+	e.last[l.ID] = key
+	if next == 0 {
+		e.state[l.Addr()] = StateOff
+	} else {
+		e.state[l.Addr()] = StateOn
+	}
+	e.mu.Unlock()
+
+	e.count(l.ID, func(s *Stats) {
+		s.Delivered++
+		s.LastValue = strconv.Itoa(int(next))
+		s.LastAt = time.Now()
+		s.LastError = ""
+	})
+	e.log.Info("нажатие переключило элемент",
+		"link", l.Title(), "addr", l.Addr(), "value", next)
 }
 
 // applyOut проводит одну связку направления Out.

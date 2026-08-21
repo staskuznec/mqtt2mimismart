@@ -291,3 +291,25 @@ func TestNoProfileTargetsLeakSensor(t *testing.T) {
 		}
 	}
 }
+
+// Профиль датчика протечки обязан отдавать нажатие шлюзу.
+//
+// Устройство зажигает тревогу и не гасит: датчик спит, воду вытерли, а
+// «протечка» горит до его следующего пробуждения. Без этого флага снять её в
+// приложении нечем — виртуальный элемент по нажатию сам не меняется.
+func TestLeakProfilesTakePress(t *testing.T) {
+	for _, key := range []string{"shellyflood", "z2m-water-leak"} {
+		t.Run(key, func(t *testing.T) {
+			tmpl, err := Find(key)
+			if err != nil {
+				t.Fatalf("Find: %v", err)
+			}
+			for _, l := range tmpl.Links {
+				if l.Direction == "in" && l.Encode == "byte" && l.ToggleOnPress {
+					return
+				}
+			}
+			t.Error("нет связки протечки с переключением по нажатию")
+		})
+	}
+}

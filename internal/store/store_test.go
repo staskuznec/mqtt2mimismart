@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/staskuznec/mqtt2mimismart/internal/devtmpl"
+	"github.com/staskuznec/mqtt2mimismart/internal/link"
 )
 
 // open создаёт временную базу для теста.
@@ -574,5 +575,39 @@ func TestHiddenTopicsRoundTrip(t *testing.T) {
 func TestHideTopicRejectsEmpty(t *testing.T) {
 	if err := open(t).HideTopic(context.Background(), "   ", false); err == nil {
 		t.Fatal("пустой топик принят, ожидалась ошибка")
+	}
+}
+
+// Переключение нажатием живёт в базе вместе со связкой: без него правка формы
+// молча терялась бы, а тревогу снова было бы нечем снять.
+func TestLinkKeepsToggleOnPress(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	id, err := s.CreateLink(ctx, link.Link{
+		Name: "Протечка", Enabled: true, Direction: link.In,
+		Topic: "shellies/flood/sensor/flood", Encode: link.EncodeByte,
+		TargetID: 50, TargetSubID: 12, ToggleOnPress: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	got, err := s.Link(ctx, id)
+	if err != nil {
+		t.Fatalf("Link: %v", err)
+	}
+	if !got.ToggleOnPress {
+		t.Fatal("флаг переключения нажатием потерян при чтении")
+	}
+
+	got.ToggleOnPress = false
+	if err := s.UpdateLink(ctx, got); err != nil {
+		t.Fatalf("UpdateLink: %v", err)
+	}
+	if again, err := s.Link(ctx, id); err != nil {
+		t.Fatalf("Link: %v", err)
+	} else if again.ToggleOnPress {
+		t.Error("флаг не снялся при правке")
 	}
 }

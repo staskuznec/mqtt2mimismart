@@ -191,18 +191,19 @@ func (s *server) elementOptions(selected string) []elementOption {
 // linkFromForm собирает связку из полей формы.
 func linkFromForm(r *http.Request) (link.Link, error) {
 	l := link.Link{
-		Name:        trim(r.PostFormValue("name")),
-		Enabled:     r.PostFormValue("enabled") != "",
-		Direction:   link.Direction(r.PostFormValue("direction")),
-		Topic:       trim(r.PostFormValue("topic")),
-		Extract:     r.PostFormValue("extract"),
-		ExtractPath: trim(r.PostFormValue("extract_path")),
-		Encode:      r.PostFormValue("encode"),
-		Decode:      r.PostFormValue("decode"),
-		Kind:        r.PostFormValue("kind"),
-		Unit:        r.PostFormValue("unit"),
-		OnlyChanged: r.PostFormValue("only_changed") != "",
-		Retain:      r.PostFormValue("retain") != "",
+		Name:          trim(r.PostFormValue("name")),
+		Enabled:       r.PostFormValue("enabled") != "",
+		Direction:     link.Direction(r.PostFormValue("direction")),
+		Topic:         trim(r.PostFormValue("topic")),
+		Extract:       r.PostFormValue("extract"),
+		ExtractPath:   trim(r.PostFormValue("extract_path")),
+		Encode:        r.PostFormValue("encode"),
+		Decode:        r.PostFormValue("decode"),
+		Kind:          r.PostFormValue("kind"),
+		Unit:          r.PostFormValue("unit"),
+		OnlyChanged:   r.PostFormValue("only_changed") != "",
+		ToggleOnPress: r.PostFormValue("toggle_on_press") != "",
+		Retain:        r.PostFormValue("retain") != "",
 	}
 
 	// Направление "both" разбирается отдельно: в модели его нет, там всегда

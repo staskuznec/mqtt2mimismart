@@ -54,7 +54,8 @@
       "values": {
         "true": "1",
         "false": "0"
-      }
+      },
+      "toggle_on_press": true
     },
     {
       "name": "Заряд батареи",

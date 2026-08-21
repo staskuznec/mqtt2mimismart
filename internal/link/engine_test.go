@@ -549,3 +549,95 @@ func TestToggleStaysWhenDeviceHasNoAbsolute(t *testing.T) {
 		t.Errorf("нагрузка = %q, ожидалось переключение как было", msgs[0].payload)
 	}
 }
+
+// Тревогу, которую устройство зажгло и не гасит, снимают нажатием.
+//
+// Датчик протечки на батарейках спит: воду вытерли, а «протечка» горит до его
+// следующего пробуждения. Виртуальный элемент по нажатию сам не меняется —
+// статус ему обязан прислать тот, кто его ведёт, и это шлюз.
+func TestPressTogglesElement(t *testing.T) {
+	ctx := context.Background()
+	e, sh, _ := newTestEngine()
+	e.SetLinks([]Link{{
+		ID: 1, Enabled: true, Direction: In,
+		Topic: "shellies/flood/sensor/flood", Encode: EncodeByte,
+		Values:      map[string]string{"true": "1", "false": "0"},
+		TargetID:    50,
+		TargetSubID: 12,
+
+		ToggleOnPress: true,
+	}})
+
+	// Датчик сработал: элемент горит.
+	e.OnMessage(ctx, "shellies/flood/sensor/flood", []byte("true"))
+	if sh.count() != 1 {
+		t.Fatalf("отправлено %d значений, ожидалось одно", sh.count())
+	}
+
+	// Нажали в приложении — элемент гаснет.
+	e.OnEvent(ctx, Event{ID: 50, SubID: 12, Payload: []byte{pressByte}})
+	if sh.count() != 2 {
+		t.Fatalf("после нажатия отправлено %d значений, ожидалось два", sh.count())
+	}
+
+	e.mu.RLock()
+	state := e.state["50:12"]
+	e.mu.RUnlock()
+	if state != StateOff {
+		t.Errorf("состояние элемента %q, ожидалось %q", state, StateOff)
+	}
+
+	// Обычное состояние элемента — не нажатие: отвечать на него записью
+	// значит завести вечный обмен «мы пишем — сервер отвечает — мы пишем».
+	e.OnEvent(ctx, Event{ID: 50, SubID: 12, Payload: []byte{1}})
+	if sh.count() != 2 {
+		t.Errorf("статус элемента вызвал запись: отправлено %d значений", sh.count())
+	}
+}
+
+// Второе нажатие возвращает элемент обратно: это переключение, а не только
+// сброс. Иначе кнопка работала бы через раз и выглядела бы сломанной.
+func TestPressTogglesBack(t *testing.T) {
+	ctx := context.Background()
+	e, sh, _ := newTestEngine()
+	e.SetLinks([]Link{{
+		ID: 1, Enabled: true, Direction: In,
+		Topic: "shellies/flood/sensor/flood", Encode: EncodeByte,
+		Values: map[string]string{"true": "1", "false": "0"},
+
+		TargetID: 50, TargetSubID: 12, ToggleOnPress: true,
+	}})
+
+	e.OnMessage(ctx, "shellies/flood/sensor/flood", []byte("false"))
+	e.OnEvent(ctx, Event{ID: 50, SubID: 12, Payload: []byte{pressByte}})
+
+	e.mu.RLock()
+	state := e.state["50:12"]
+	e.mu.RUnlock()
+	if state != StateOn {
+		t.Errorf("состояние элемента %q, ожидалось %q", state, StateOn)
+	}
+	if sh.count() != 2 {
+		t.Errorf("отправлено %d значений, ожидалось два", sh.count())
+	}
+}
+
+// Связка без флага нажатия не слышит вовсе: элемент, которым шлюз не
+// управляет, не должен менять состояние оттого, что на него нажали.
+func TestPressIgnoredWithoutFlag(t *testing.T) {
+	ctx := context.Background()
+	e, sh, _ := newTestEngine()
+	e.SetLinks([]Link{{
+		ID: 1, Enabled: true, Direction: In,
+		Topic: "shellies/flood/sensor/flood", Encode: EncodeByte,
+		Values:   map[string]string{"true": "1", "false": "0"},
+		TargetID: 50, TargetSubID: 12,
+	}})
+
+	e.OnMessage(ctx, "shellies/flood/sensor/flood", []byte("true"))
+	e.OnEvent(ctx, Event{ID: 50, SubID: 12, Payload: []byte{pressByte}})
+
+	if sh.count() != 1 {
+		t.Errorf("отправлено %d значений, ожидалось одно: нажатие не должно было ничего писать", sh.count())
+	}
+}

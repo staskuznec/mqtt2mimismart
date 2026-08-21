@@ -94,6 +94,10 @@ type LinkSpec struct {
 	// значение уходит на каждом опросе.
 	OnlyChanged *bool `json:"only_changed,omitempty"`
 
+	// ToggleOnPress отдаёт нажатие на элементе шлюзу: он запишет обратное
+	// значение. Для тревог, которые устройство зажигает и не гасит.
+	ToggleOnPress bool `json:"toggle_on_press,omitempty"`
+
 	// Pair помечает стороны одной двусторонней привязки. Связки с одинаковой
 	// меткой заводятся и удаляются вместе.
 	Pair string `json:"pair,omitempty"`
@@ -228,24 +232,25 @@ func (t Template) Apply(prefix string, assign map[string]Addr) ([]link.Link, err
 		}
 
 		l := link.Link{
-			Name:        spec.Name,
-			Enabled:     true,
-			Direction:   link.Direction(spec.Direction),
-			Topic:       strings.ReplaceAll(spec.Topic, Placeholder, prefix),
-			QoS:         spec.QoS,
-			Retain:      spec.Retain,
-			Kind:        spec.Kind,
-			Extract:     spec.Extract,
-			ExtractPath: spec.ExtractPath,
-			Values:      spec.Values,
-			Scale:       spec.Scale,
-			TargetID:    addr.ID,
-			TargetSubID: addr.SubID,
-			Encode:      spec.Encode,
-			Decode:      spec.Decode,
-			Unit:        spec.Unit,
-			Precision:   spec.Precision,
-			OnlyChanged: onlyChanged,
+			Name:          spec.Name,
+			Enabled:       true,
+			Direction:     link.Direction(spec.Direction),
+			Topic:         strings.ReplaceAll(spec.Topic, Placeholder, prefix),
+			QoS:           spec.QoS,
+			Retain:        spec.Retain,
+			Kind:          spec.Kind,
+			Extract:       spec.Extract,
+			ExtractPath:   spec.ExtractPath,
+			Values:        spec.Values,
+			Scale:         spec.Scale,
+			TargetID:      addr.ID,
+			TargetSubID:   addr.SubID,
+			Encode:        spec.Encode,
+			Decode:        spec.Decode,
+			Unit:          spec.Unit,
+			Precision:     spec.Precision,
+			OnlyChanged:   onlyChanged,
+			ToggleOnPress: spec.ToggleOnPress,
 		}.Normalize()
 
 		if err := l.Validate(); err != nil {

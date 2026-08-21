@@ -19,7 +19,8 @@ var ErrNotFound = errors.New("store: запись не найдена")
 // новой миграции.
 const linkColumns = `id, device_id, name, enabled, direction, topic, qos, retain,
 	extract, extract_path, values_json, scale, offset_value,
-	target_id, target_subid, encode, decode, unit, precision, only_changed, kind, pair_id`
+	target_id, target_subid, encode, decode, unit, precision, only_changed, kind, pair_id,
+	toggle_on_press`
 
 // Links читает все связки, сначала включённые, потом по адресу элемента.
 func (s *Store) Links(ctx context.Context) ([]link.Link, error) {
@@ -137,12 +138,12 @@ func (s *Store) CreateLink(ctx context.Context, l link.Link) (int64, error) {
 		INSERT INTO links (device_id, name, enabled, direction, topic, qos, retain,
 			extract, extract_path, values_json, scale, offset_value,
 			target_id, target_subid, encode, decode, unit, precision, only_changed, kind, pair_id,
-			created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			toggle_on_press, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		nullableID(l.DeviceID), l.Name, l.Enabled, string(l.Direction), l.Topic, l.QoS, l.Retain,
 		l.Extract, l.ExtractPath, values, l.Scale, l.Offset,
 		l.TargetID, l.TargetSubID, l.Encode, l.Decode, l.Unit, l.Precision, l.OnlyChanged, l.Kind,
-		nullableID(l.PairID), now, now)
+		nullableID(l.PairID), l.ToggleOnPress, now, now)
 	if err != nil {
 		return 0, fmt.Errorf("store: сохранение связки: %w", err)
 	}
@@ -171,13 +172,13 @@ func (s *Store) UpdateLink(ctx context.Context, l link.Link) error {
 			qos = ?, retain = ?, extract = ?, extract_path = ?, values_json = ?,
 			scale = ?, offset_value = ?, target_id = ?, target_subid = ?,
 			encode = ?, decode = ?, unit = ?, precision = ?, only_changed = ?, kind = ?,
-			pair_id = ?, updated_at = ?
+			pair_id = ?, toggle_on_press = ?, updated_at = ?
 		WHERE id = ?`,
 		nullableID(l.DeviceID), l.Name, l.Enabled, string(l.Direction), l.Topic,
 		l.QoS, l.Retain, l.Extract, l.ExtractPath, values,
 		l.Scale, l.Offset, l.TargetID, l.TargetSubID,
 		l.Encode, l.Decode, l.Unit, l.Precision, l.OnlyChanged, l.Kind,
-		nullableID(l.PairID), time.Now().Unix(), l.ID)
+		nullableID(l.PairID), l.ToggleOnPress, time.Now().Unix(), l.ID)
 	if err != nil {
 		return fmt.Errorf("store: обновление связки: %w", err)
 	}
@@ -309,7 +310,8 @@ func scanLink(row scanner) (link.Link, error) {
 
 	err := row.Scan(&l.ID, &deviceID, &l.Name, &l.Enabled, &direction, &l.Topic, &l.QoS, &l.Retain,
 		&l.Extract, &l.ExtractPath, &values, &l.Scale, &l.Offset,
-		&l.TargetID, &l.TargetSubID, &l.Encode, &l.Decode, &l.Unit, &precision, &l.OnlyChanged, &l.Kind, &pairID)
+		&l.TargetID, &l.TargetSubID, &l.Encode, &l.Decode, &l.Unit, &precision, &l.OnlyChanged, &l.Kind, &pairID,
+		&l.ToggleOnPress)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return link.Link{}, err
