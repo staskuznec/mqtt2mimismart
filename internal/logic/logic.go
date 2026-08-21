@@ -26,6 +26,21 @@ type Element struct {
 	Name  string
 	Type  string // lamp, script, temperature-sensor, dimer-lamp и так далее
 	Area  string // путь области: «Первый этаж → Прихожая»
+
+	// SubType — вид виртуального элемента: у него самого type всегда
+	// "virtual", а чем он на деле работает — лампой, датчиком протечки,
+	// строкой — сказано здесь. Без этого поля виртуальный элемент выглядит
+	// одинаково пустым, и подсказать по нему форму значения нечем.
+	SubType string
+}
+
+// Kind — чем элемент работает: для виртуального это его sub-type, для
+// остальных — обычный тип.
+func (e Element) Kind() string {
+	if e.Type == typeVirtual && e.SubType != "" {
+		return e.SubType
+	}
+	return e.Type
 }
 
 // Addr возвращает адрес в виде "id:subid".
@@ -38,6 +53,10 @@ const (
 	FormText   = "text"   // строка
 	FormAny    = ""       // тип неизвестен, подсказать нечего
 )
+
+// typeVirtual — элемент, заведённый под шлюз, а не под физическое устройство.
+// Свой вид он несёт в sub-type.
+const typeVirtual = "virtual"
 
 // byteTypes — типы, у которых состояние занимает ровно один байт.
 //
@@ -66,13 +85,22 @@ var sensorTypes = map[string]bool{
 	"co2-sensor":         true,
 }
 
-// Form подсказывает форму значения по типу элемента.
+// Form подсказывает форму значения по виду элемента.
+//
+// У виртуального элемента вид берётся из sub-type: "virtual" сам по себе не
+// говорит ничего, а под шлюз заводят как раз виртуальные — и именно им
+// подсказка нужнее всего.
 func (e Element) Form() string {
+	kind := e.Kind()
 	switch {
-	case byteTypes[e.Type]:
+	case byteTypes[kind]:
 		return FormByte
-	case sensorTypes[e.Type]:
+	case sensorTypes[kind]:
 		return FormSensor
+	case kind == subTypeSensor:
+		return FormSensor
+	case kind == subTypeText:
+		return FormText
 	default:
 		return FormAny
 	}
@@ -125,9 +153,10 @@ type xmlArea struct {
 }
 
 type xmlItem struct {
-	Addr string `xml:"addr,attr"`
-	Name string `xml:"name,attr"`
-	Type string `xml:"type,attr"`
+	Addr    string `xml:"addr,attr"`
+	Name    string `xml:"name,attr"`
+	Type    string `xml:"type,attr"`
+	SubType string `xml:"sub-type,attr"`
 }
 
 // Parse разбирает logic.xml.
@@ -195,9 +224,10 @@ func collectItems(items []xmlItem, area string) []Element {
 			SubID: subID,
 			// В именах встречается "\10" как разделитель строк в интерфейсе
 			// умного дома. В списке выбора он выглядит мусором.
-			Name: strings.ReplaceAll(item.Name, `\10`, " "),
-			Type: item.Type,
-			Area: area,
+			Name:    strings.ReplaceAll(item.Name, `\10`, " "),
+			Type:    item.Type,
+			SubType: item.SubType,
+			Area:    area,
 		})
 	}
 	return out

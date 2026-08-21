@@ -132,3 +132,51 @@ func TestAddr(t *testing.T) {
 		t.Errorf("Addr() = %q", got)
 	}
 }
+
+// Элементы под шлюз заводят виртуальными, и в logic.xml они все одного типа —
+// "virtual". Чем такой элемент работает на деле, сказано в sub-type: без него
+// датчик протечки и строка выглядят одинаково, и подсказать форму значения
+// нечем — а ошибка здесь стоит дороже всего.
+func TestVirtualElementTakesKindFromSubType(t *testing.T) {
+	house, err := Parse([]byte(`<smart-house srv-ver="1">
+		<area name="Душ">
+			<item addr="50:12" length="0" name="душ Протечка" sub-type="leak-sensor" type="virtual"/>
+			<item addr="50:13" length="2" name="душ Температура" sub-type="sensor" type="virtual"/>
+			<item addr="50:14" length="0" name="душ Режим" sub-type="text" type="virtual"/>
+			<item addr="50:15" length="0" name="душ Свет" type="lamp"/>
+		</area>
+	</smart-house>`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	for _, tc := range []struct {
+		addr string
+		kind string
+		form string
+	}{
+		{"50:12", "leak-sensor", FormByte},
+		{"50:13", "sensor", FormSensor},
+		{"50:14", "text", FormText},
+		{"50:15", "lamp", FormByte},
+	} {
+		t.Run(tc.addr, func(t *testing.T) {
+			var found bool
+			for _, e := range house.Elements {
+				if e.Addr() != tc.addr {
+					continue
+				}
+				found = true
+				if got := e.Kind(); got != tc.kind {
+					t.Errorf("Kind = %q, ожидалось %q", got, tc.kind)
+				}
+				if got := e.Form(); got != tc.form {
+					t.Errorf("Form = %q, ожидалось %q", got, tc.form)
+				}
+			}
+			if !found {
+				t.Fatalf("элемент %s не разобран", tc.addr)
+			}
+		})
+	}
+}

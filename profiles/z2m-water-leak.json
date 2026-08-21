@@ -11,7 +11,8 @@
         "leak-sensor",
         "door-sensor",
         "script",
-        "lamp"
+        "lamp",
+        "virtual"
       ],
       "required": true,
       "hint": "1 — вода обнаружена"

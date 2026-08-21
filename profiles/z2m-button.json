@@ -10,7 +10,8 @@
       "types": [
         "script",
         "lamp",
-        "switch"
+        "switch",
+        "virtual"
       ],
       "required": true,
       "hint": "чаще всего сюда назначают сценарий"

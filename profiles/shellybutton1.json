@@ -9,7 +9,8 @@
       "form": "byte",
       "types": [
         "lamp",
-        "script"
+        "script",
+        "virtual"
       ],
       "required": true
     },
@@ -19,7 +20,8 @@
       "form": "byte",
       "types": [
         "lamp",
-        "script"
+        "script",
+        "virtual"
       ]
     },
     {
@@ -28,7 +30,8 @@
       "form": "byte",
       "types": [
         "lamp",
-        "script"
+        "script",
+        "virtual"
       ]
     },
     {
@@ -38,7 +41,6 @@
       "types": [
         "humidity-sensor",
         "percent-sensor",
-        "virtual",
         "virtual"
       ]
     },

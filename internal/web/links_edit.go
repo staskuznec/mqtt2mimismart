@@ -46,10 +46,16 @@ type linkFormData struct {
 
 // elementOption — элемент умного дома в выпадающем списке.
 type elementOption struct {
-	Addr     string
-	Label    string // «Прихожая → Свет (lamp)»
-	Type     string // из logic.xml: lamp, temperature-sensor и прочие
-	Form     string // подсказка формы значения по типу
+	Addr  string
+	Label string // «Прихожая → Свет (lamp)»
+
+	Type string // как записано в logic.xml: lamp, virtual, temperature-sensor
+
+	// Kind — чем элемент работает на деле: у виртуального это его sub-type.
+	// Виртуальные заводят под шлюз пачками, и "virtual" у каждого второго не
+	// различает ничего — а "leak-sensor" в скобках говорит всё.
+	Kind     string
+	Form     string // подсказка формы значения по виду элемента
 	Area     string
 	Selected bool
 }
@@ -165,13 +171,14 @@ func (s *server) elementOptions(selected string) []elementOption {
 		if e.Area != "" {
 			label = e.Area + " → " + e.Name
 		}
-		if e.Type != "" {
-			label += " (" + e.Type + ")"
+		if kind := e.Kind(); kind != "" {
+			label += " (" + kind + ")"
 		}
 		out = append(out, elementOption{
 			Addr:     e.Addr(),
 			Label:    label,
 			Type:     e.Type,
+			Kind:     e.Kind(),
 			Form:     e.Form(),
 			Area:     e.Area,
 			Selected: e.Addr() == selected,

@@ -10,7 +10,8 @@
       "types": [
         "lamp",
         "door-sensor",
-        "script"
+        "script",
+        "virtual"
       ],
       "required": true
     },
@@ -41,7 +42,8 @@
       "types": [
         "lamp",
         "door-sensor",
-        "script"
+        "script",
+        "virtual"
       ]
     },
     {
@@ -51,7 +53,6 @@
       "types": [
         "humidity-sensor",
         "percent-sensor",
-        "virtual",
         "virtual"
       ]
     },

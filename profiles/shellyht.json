@@ -31,7 +31,6 @@
       "types": [
         "humidity-sensor",
         "percent-sensor",
-        "virtual",
         "virtual"
       ]
     },

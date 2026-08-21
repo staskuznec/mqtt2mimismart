@@ -54,7 +54,8 @@
       "types": [
         "lamp",
         "door-sensor",
-        "script"
+        "script",
+        "virtual"
       ]
     },
     {

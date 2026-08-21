@@ -37,7 +37,8 @@
       "types": [
         "lamp",
         "door-sensor",
-        "script"
+        "script",
+        "virtual"
       ]
     },
     {
@@ -65,7 +66,8 @@
       "types": [
         "lamp",
         "door-sensor",
-        "script"
+        "script",
+        "virtual"
       ]
     },
     {

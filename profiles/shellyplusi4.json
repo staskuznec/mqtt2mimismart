@@ -11,7 +11,8 @@
         "switch",
         "door-sensor",
         "script",
-        "lamp"
+        "lamp",
+        "virtual"
       ],
       "required": true
     },
@@ -23,7 +24,8 @@
         "switch",
         "door-sensor",
         "script",
-        "lamp"
+        "lamp",
+        "virtual"
       ]
     },
     {
@@ -34,7 +36,8 @@
         "switch",
         "door-sensor",
         "script",
-        "lamp"
+        "lamp",
+        "virtual"
       ]
     },
     {
@@ -45,7 +48,8 @@
         "switch",
         "door-sensor",
         "script",
-        "lamp"
+        "lamp",
+        "virtual"
       ]
     },
     {

@@ -279,7 +279,11 @@ func (s *server) roleOptions(t devtmpl.Template, all []elementOption,
 			opt.Selected = fmt.Sprintf("%d:%d", addr.ID, addr.SubID)
 		}
 		for _, e := range all {
-			if role.Accepts(e.Type) {
+			// Спрашиваем и о записанном типе, и о том, чем элемент работает:
+			// профили перечисляют то "virtual" — как заводит элементы сам
+			// шлюз, — то "leak-sensor", как назвал его человек в logic.xml.
+			// Годится и то, и другое: это один и тот же элемент.
+			if role.Accepts(e.Type) || (e.Kind != "" && role.Accepts(e.Kind)) {
 				opt.Elements = append(opt.Elements, e)
 			}
 		}

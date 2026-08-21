@@ -10,7 +10,9 @@
       "types": [
         "lamp",
         "door-sensor",
-        "script"
+        "script",
+        "leak-sensor",
+        "virtual"
       ],
       "required": true,
       "hint": "однобайтовый элемент: 1 — вода обнаружена"
@@ -32,7 +34,6 @@
       "types": [
         "humidity-sensor",
         "percent-sensor",
-        "virtual",
         "virtual"
       ]
     },

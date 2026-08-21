@@ -32,7 +32,7 @@
     <tr>
       <td class="mono">{{.Addr}}</td>
       <td>{{.Name}}</td>
-      <td class="hint">{{.Type}}</td>
+      <td class="hint">{{.Type}}{{if .SubType}} · {{.SubType}}{{end}}</td>
       <td>{{with .Form}}{{if eq . "byte"}}один байт{{else if eq . "sensor"}}датчик 8.8{{else}}{{.}}{{end}}{{else}}—{{end}}</td>
       <td class="hint">{{.Area}}</td>
     </tr>
