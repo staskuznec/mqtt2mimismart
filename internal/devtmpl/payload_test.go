@@ -51,6 +51,17 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 			`{"power":0.00,"overpower":0.00,"is_valid":true,"total":0}],` +
 			`"temperature":53.87,"overtemperature":false,"tmp":{"tC":53.87,"is_valid":true}}`
 
+		// Живой снимок с объекта: датчик протечки Shelly Flood, топик info.
+		// Имя сети и адрес заменены. Уровень сигнала батарейный датчик кладёт
+		// туда же, куда и реле, — в wifi_sta, а не в свой раздел с водой.
+		shellyFloodInfo = `{"wifi_sta":{"connected":true,"ssid":"home",` +
+			`"ip":"192.168.20.240","rssi":-51},"cloud":{"enabled":true,` +
+			`"connected":false},"mqtt":{"connected":true},"time":"12:35",` +
+			`"serial":1,"has_update":false,"mac":"000000000000",` +
+			`"is_valid":true,"flood":false,` +
+			`"tmp":{"value":22.5,"units":"C","tC":22.5,"is_valid":true},` +
+			`"bat":{"value":100,"voltage":2.96},"act_reasons":["sensor"]}`
+
 		tasmotaTH = `{"Time":"2018.02.01 22:52:09",` +
 			`"AM2301":{"Temperature":15.5,"Humidity":50.6},"TempUnit":"C"}`
 
@@ -130,6 +141,21 @@ func TestProfilesOnRealPayloads(t *testing.T) {
 			`{"wifi_sta":{"connected":true,"ssid":"home","ip":"192.168.1.51","rssi":-73},` +
 				`"uptime":94021,"has_update":false}`, "нормальный", ""},
 		{"shelly25-relay", "На связи", "false", "офлайн", ""},
+
+		// Батарейные датчики публикуют info при пробуждении, и это
+		// единственный момент, когда об их сигнале вообще можно узнать:
+		// «на связи» у спящего устройства бессмысленно, а слабый сигнал —
+		// ровно то, из-за чего показания перестают доходить.
+		{"shellyflood", "Уровень сигнала WiFi", shellyFloodInfo, "хороший", ""},
+		{"shellyht", "Уровень сигнала WiFi",
+			`{"wifi_sta":{"connected":true,"ssid":"home","ip":"192.168.1.60","rssi":-84},` +
+				`"bat":{"value":94,"voltage":2.93},"tmp":{"value":21.5,"is_valid":true}}`,
+			"плохой", ""},
+		// Gen2 на батарейках берёт уровень из своего status/wifi, как и
+		// остальные Plus, — общего для двух поколений топика нет.
+		{"shellyplusht", "Уровень сигнала WiFi",
+			`{"sta_ip":"192.168.1.61","status":"got ip","ssid":"home","rssi":-73}`,
+			"нормальный", ""},
 
 		// Защита по мощности выключает канал и публикует это словом вместо
 		// «off». Единица в элементе означала бы горящую лампу при выбитом

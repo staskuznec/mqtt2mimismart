@@ -231,3 +231,34 @@ func TestUnitsAreConsistent(t *testing.T) {
 		}
 	}
 }
+
+// Уровень сигнала обязан быть в каждом профиле Shelly.
+//
+// На объекте это первое, чем объясняются пропадающие показания: устройство
+// «работает», а сообщения не доходят, потому что стоит за двумя стенами. Тому,
+// кто ставит новый профиль, вспомнить про эту связку неоткуда, поэтому требуем
+// её здесь — иначе она появляется по одному устройству за раз, и как раз у
+// батарейного датчика в дальнем углу её и не оказывается.
+func TestShellyProfilesReportSignal(t *testing.T) {
+	all, err := Builtin()
+	if err != nil {
+		t.Fatalf("Builtin: %v", err)
+	}
+
+	for _, tmpl := range all {
+		if !strings.HasPrefix(tmpl.Key, "shelly") {
+			continue
+		}
+		t.Run(tmpl.Key, func(t *testing.T) {
+			for _, l := range tmpl.Links {
+				if l.Role == "signal" {
+					if l.ExtractPath == "" {
+						t.Errorf("связка %q без пути в JSON: уровень никуда не уедет", l.Name)
+					}
+					return
+				}
+			}
+			t.Error("нет связки с уровнем сигнала WiFi")
+		})
+	}
+}
