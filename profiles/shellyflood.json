@@ -1,7 +1,7 @@
 {
   "name": "Shelly Flood — датчик протечки",
   "model": "SHWT-1",
-  "note": "Батарейный датчик, публикует при пробуждении и при срабатывании. Признак протечки уходит одним байтом — заводите его на однобайтовый элемент, а не на датчик. Уровень сигнала WiFi берётся из топика info: полный статус устройство публикует при пробуждении, поэтому уровень обновляется вместе с остальными значениями, а не постоянно.",
+  "note": "Батарейный датчик: почти всё время спит, поэтому на пинг не отвечает и в MQTT молчит. Просыпается от воды, от кнопки на корпусе и по сроку периодического отчёта из настроек устройства; протечка уезжает сразу, не дожидаясь срока. Все показания публикуются под sensor/, признак протечки уходит одним байтом — заводите его на однобайтовый элемент, а не на датчик. Уровень сигнала WiFi берётся из топика info: он появляется, только если в настройках MQTT задан период публикации статуса, — иначе элемент останется пустым, а остальное работает и без него.",
   "roles": [
     {
       "key": "flood",
@@ -38,6 +38,33 @@
       ]
     },
     {
+      "key": "error",
+      "title": "Исправность датчика",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "текстовый элемент: «исправен» или «ошибка датчика»"
+    },
+    {
+      "key": "wake",
+      "title": "Отчего проснулся",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "текстовый элемент: кнопка, вода, срок отчёта — по нему видно, что датчик живой"
+    },
+    {
+      "key": "online",
+      "title": "Устройство на связи",
+      "form": "text",
+      "types": [
+        "virtual"
+      ],
+      "hint": "у спящего датчика почти всегда «офлайн»: брокер объявляет это сам, как только тот засыпает"
+    },
+    {
       "key": "signal",
       "title": "Уровень сигнала WiFi",
       "form": "text",
@@ -52,7 +79,7 @@
       "name": "Протечка",
       "direction": "in",
       "role": "flood",
-      "topic": "{{prefix}}/flood",
+      "topic": "{{prefix}}/sensor/flood",
       "encode": "byte",
       "values": {
         "true": "1",
@@ -64,7 +91,7 @@
       "name": "Температура",
       "direction": "in",
       "role": "temp",
-      "topic": "{{prefix}}/temperature",
+      "topic": "{{prefix}}/sensor/temperature",
       "encode": "sensor",
       "only_changed": false
     },
@@ -72,8 +99,49 @@
       "name": "Заряд батареи",
       "direction": "in",
       "role": "battery",
-      "topic": "{{prefix}}/battery",
+      "topic": "{{prefix}}/sensor/battery",
       "encode": "sensor",
+      "only_changed": false
+    },
+    {
+      "name": "Исправность датчика",
+      "direction": "in",
+      "role": "error",
+      "topic": "{{prefix}}/sensor/error",
+      "encode": "text",
+      "values": {
+        "0": "исправен",
+        ">=1": "ошибка датчика"
+      },
+      "only_changed": false
+    },
+    {
+      "name": "Отчего проснулся",
+      "direction": "in",
+      "role": "wake",
+      "topic": "{{prefix}}/sensor/act_reasons",
+      "extract": "json",
+      "extract_path": "0",
+      "encode": "text",
+      "values": {
+        "button": "кнопка",
+        "sensor": "вода",
+        "periodic": "срок отчёта",
+        "battery": "заряд батареи",
+        "poweron": "включение"
+      },
+      "only_changed": false
+    },
+    {
+      "name": "На связи",
+      "direction": "in",
+      "role": "online",
+      "topic": "{{prefix}}/online",
+      "encode": "text",
+      "values": {
+        "true": "онлайн",
+        "false": "офлайн"
+      },
       "only_changed": false
     },
     {

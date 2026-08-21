@@ -49,7 +49,7 @@
       "name": "Температура",
       "direction": "in",
       "role": "temp",
-      "topic": "{{prefix}}/temperature",
+      "topic": "{{prefix}}/sensor/temperature",
       "encode": "sensor",
       "only_changed": false
     },
@@ -57,7 +57,7 @@
       "name": "Влажность",
       "direction": "in",
       "role": "humidity",
-      "topic": "{{prefix}}/humidity",
+      "topic": "{{prefix}}/sensor/humidity",
       "encode": "sensor",
       "only_changed": false
     },
@@ -65,7 +65,7 @@
       "name": "Заряд батареи",
       "direction": "in",
       "role": "battery",
-      "topic": "{{prefix}}/battery",
+      "topic": "{{prefix}}/sensor/battery",
       "encode": "sensor",
       "only_changed": false
     },

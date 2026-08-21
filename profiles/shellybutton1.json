@@ -107,7 +107,7 @@
       "name": "Заряд батареи",
       "direction": "in",
       "role": "battery",
-      "topic": "{{prefix}}/battery",
+      "topic": "{{prefix}}/sensor/battery",
       "encode": "sensor",
       "only_changed": false
     },
