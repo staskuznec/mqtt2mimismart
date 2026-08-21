@@ -199,6 +199,11 @@ func TestPagesRender(t *testing.T) {
 						Payload: "46.06", Kind: "number", Count: 2, Ago: "8 с назад"},
 				}},
 			},
+			Hidden: []hiddenRow{
+				{Topic: "tele/чужой-датчик", Tree: true, Since: "2 ч назад"},
+				{Topic: "zigbee2mqtt/bridge/log", Since: "вчера"},
+			},
+			Error: "Топик shellies/a/relay/0 не скрыть: на нём работают связки — Свет.",
 		},
 		"links": linksData{
 			Title: "Связки", Nav: "links", Total: 1,
