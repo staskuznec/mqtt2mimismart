@@ -68,6 +68,36 @@ func TestTemplatesUseRelativeLinks(t *testing.T) {
 }
 
 // Обращения к серверу из скриптов тоже должны быть относительными.
+// Атрибут form="…" у поля означает «это поле принадлежит форме с таким id».
+// Если формы с таким id нет, поле не принадлежит никакой — и в отправку не
+// попадает вовсе. Ошибка тихая: страница выглядит целой, а значение с неё не
+// уходит. Ровно так проба в редакторе связок отвечала «сообщение пустое» на
+// любой введённый пример.
+func TestFormAttributesPointAtExistingForm(t *testing.T) {
+	attr := regexp.MustCompile(`\sform="([^"]+)"`)
+
+	err := fs.WalkDir(templateFS, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".html") {
+			return err
+		}
+		body, err := templateFS.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		for _, m := range attr.FindAllStringSubmatch(string(body), -1) {
+			if !strings.Contains(string(body), `id="`+m[1]+`"`) {
+				t.Errorf("%s: поле привязано к форме %q, которой в шаблоне нет — "+
+					"значение такого поля никуда не отправляется", path, m[1])
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("обход шаблонов: %v", err)
+	}
+}
+
 func TestTemplatesUseRelativeFetch(t *testing.T) {
 	bad := regexp.MustCompile(`fetch\(['"]/`)
 

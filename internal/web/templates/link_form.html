@@ -130,7 +130,7 @@
     между пробой и работой невозможно.
   </p>
   <label>Пример сообщения
-    <input type="text" name="sample" value="on" form="preview-form"></label>
+    <input type="text" name="sample" id="sample" value="on"></label>
   <button type="button"
           class="ghost" onclick="preview(this.form)">Проверить</button>
   <div id="preview" style="margin-top:14px"></div>
@@ -146,6 +146,13 @@ async function preview(form) {
   const res = await fetch('links/preview', {method: 'POST', body: new URLSearchParams(data)});
   document.getElementById('preview').innerHTML = await res.text();
 }
+
+// Enter в поле пробы — это «Проверить», а не «Сохранить». Поле стоит в той же
+// форме, что и связка, и без этого проба на клавиатуре молча сохраняла бы
+// связку и уводила со страницы.
+document.getElementById('sample').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { e.preventDefault(); preview(this.form); }
+});
 // Подсказка формы по типу элемента: у ламп и штор один байт, и перепутать
 // это с датчиком — самая дорогая ошибка в проекте.
 document.querySelector('select[name=target]').addEventListener('change', function () {
