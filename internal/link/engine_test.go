@@ -238,6 +238,40 @@ func TestHeatingSetpointFromSnapshot(t *testing.T) {
 	}
 }
 
+// Режим отоплению уходит, только когда плитка в другом состоянии: иначе
+// ежеминутное «включено» с прибора сбрасывало бы выбранную автоматизацию.
+func TestHeatingModeOnlyWhenDiffers(t *testing.T) {
+	e, sh, _ := newTestEngine()
+	e.SetLinks([]Link{
+		{ID: 1, Enabled: true, Direction: In, Topic: "welrok/oz/get/powerOff",
+			Encode: EncodeHeating, Values: map[string]string{"1": "as:1", "0": "as:2"},
+			TargetID: 100, TargetSubID: 10},
+		{ID: 2, Enabled: true, Direction: Out, Topic: "welrok/oz/set/powerOff",
+			Decode: DecodeHeatingPower, Values: map[string]string{"on": "0", "off": "1"},
+			TargetID: 100, TargetSubID: 10},
+	})
+	ctx := context.Background()
+
+	// Состояние плитки ещё не пришло — ничего не шлём.
+	e.OnMessage(ctx, "welrok/oz/get/powerOff", []byte("0"))
+	if sh.count() != 0 {
+		t.Fatal("команда ушла, пока состояние плитки не известно")
+	}
+
+	// Плитка включена, прибор включён — слать нечего.
+	e.OnEvent(ctx, Event{ID: 100, SubID: 10, Payload: []byte{1, 0, 0x15, 0, 0x14, 255}, Sync: true})
+	e.OnMessage(ctx, "welrok/oz/get/powerOff", []byte("0"))
+	if sh.count() != 0 {
+		t.Fatal("команда ушла, хотя плитка уже включена")
+	}
+
+	// Прибор выключили кнопкой — плитка должна выключиться.
+	e.OnMessage(ctx, "welrok/oz/get/powerOff", []byte("1"))
+	if sh.count() != 1 {
+		t.Fatalf("отправлено %d, ожидалась одна команда «всегда выключено»", sh.count())
+	}
+}
+
 // Петля: записали в лампу единицу, сервер вернул её же событием. Без защиты
 // шлюз опубликовал бы команду устройству, которое и так включено.
 func TestEchoOfOwnWriteIsNotRepublished(t *testing.T) {

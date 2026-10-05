@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -290,7 +291,31 @@ func (e *Engine) applyIn(ctx context.Context, l Link, payload []byte) {
 		}
 	}
 
-	value, err := shclient.Raw(l.TargetID, l.TargetSubID, wire.Bytes)
+	// Режим отоплению шлём, только когда плитка в другом состоянии. Прибор
+	// публикует своё «включено» раз в минуту, и без этой проверки первое же
+	// сообщение после старта шлюза сбросило бы автоматизацию, выбранную в
+	// приложении. Состояние плитки приходит снимком; пока его нет — ждём.
+	if wire.Kind == EncodeHeating && strings.HasPrefix(wire.Text, heatingMode) {
+		want := StateOn
+		if wire.Text == HeatingOffCmd {
+			want = StateOff
+		}
+		e.mu.RLock()
+		known := e.state[l.Addr()]
+		e.mu.RUnlock()
+		if known == "" || known == want {
+			e.count(l.ID, func(s *Stats) { s.Skipped++ })
+			return
+		}
+	}
+
+	// Команда отоплению идёт не в сам элемент, а в служебный адрес сервера;
+	// адрес отопления лежит в ней же.
+	toID, toSub := l.TargetID, l.TargetSubID
+	if wire.Kind == EncodeHeating {
+		toID, toSub = HeatingCtlID, HeatingCtlSubID
+	}
+	value, err := shclient.Raw(toID, toSub, wire.Bytes)
 	if err != nil {
 		e.fail(l, err, "сборка пакета")
 		return
@@ -344,7 +369,7 @@ func (e *Engine) OnEvent(ctx context.Context, ev Event) {
 		links := e.out[addr]
 		e.mu.RUnlock()
 		for _, l := range links {
-			if l.Decode == DecodeHeating {
+			if l.FromSnapshot() {
 				e.applyOut(l, ev)
 			}
 		}
@@ -453,6 +478,13 @@ func (e *Engine) applyOut(l Link, ev Event) {
 		return
 	}
 	payload := l.MapValue(e.absolute(l, value))
+
+	// Включено ли отопление, знаем только отсюда: из статуса самой плитки.
+	if l.Decode == DecodeHeatingPower {
+		e.mu.Lock()
+		e.state[l.Addr()] = value
+		e.mu.Unlock()
+	}
 
 	// Состояния элементов приезжают снова и снова — в каждом ответе на запрос
 	// состояний. Без отсева повторов шлюз слал бы команду по каждой лампе на

@@ -72,6 +72,7 @@
       <option value="byte" {{if eq .Link.Encode "byte"}}selected{{end}}>один байт</option>
       <option value="sensor" {{if eq .Link.Encode "sensor"}}selected{{end}}>датчик 8.8</option>
       <option value="text" {{if eq .Link.Encode "text"}}selected{{end}}>текст</option>
+      <option value="heating" {{if eq .Link.Encode "heating"}}selected{{end}}>отопление: уставка ts или режим as через 1000:102</option>
     </select></label>
 
   <label>Единица <span>— приписка к тексту, например « Вт»</span>
@@ -102,6 +103,7 @@
       <option value="sensor" {{if eq .Decode "sensor"}}selected{{end}}>датчик 8.8</option>
       <option value="text" {{if eq .Decode "text"}}selected{{end}}>текст</option>
       <option value="heating" {{if eq .Decode "heating"}}selected{{end}}>отопление (valve-heating): уставка из полного статуса</option>
+      <option value="heating-power" {{if eq .Decode "heating-power"}}selected{{end}}>отопление (valve-heating): включено или «всегда выключено»</option>
     </select></label>
   <label>QoS
     <input type="text" name="qos" value="{{.QoS}}" style="max-width:80px"></label>

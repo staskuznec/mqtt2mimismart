@@ -62,6 +62,8 @@ func (l Link) ToWire(payload []byte) (Wire, error) {
 		return l.encodeByte(value)
 	case EncodeSensor:
 		return l.encodeSensor(value)
+	case EncodeHeating:
+		return l.encodeHeating(value)
 	default:
 		return Wire{}, fmt.Errorf("форма значения %q не поддерживается", l.Encode)
 	}
@@ -245,6 +247,31 @@ func (l Link) encodeText(value string) (Wire, error) {
 	return Wire{Kind: EncodeText, Bytes: []byte(text), Text: text, Number: v}, nil
 }
 
+// encodeHeating готовит команду отоплению для служебного адреса 1000:102.
+//
+// Строка "as:…" — режим, её даёт таблица значений; всё остальное должно быть
+// числом и уходит уставкой.
+func (l Link) encodeHeating(value string) (Wire, error) {
+	cmd := strings.TrimSpace(value)
+	var v float64
+	// Связка с таблицей значений — это связка режима. Значение, не попавшее в
+	// таблицу, уставкой уходить не должно: «0» из выключателя стало бы ts:0.
+	if !strings.HasPrefix(cmd, heatingMode) && len(l.Values) > 0 {
+		return Wire{}, fmt.Errorf("значение %q не переведено в режим отопления: "+
+			"добавьте его в таблицу значений строкой вида %q", value, value+" = as:1")
+	}
+	if !strings.HasPrefix(cmd, heatingMode) {
+		n, err := l.number(cmd)
+		if err != nil {
+			return Wire{}, err
+		}
+		v = n
+		cmd = "ts:" + strconv.FormatFloat(n, 'f', l.digits(), 64)
+	}
+	payload := fmt.Sprintf("%d:%d\x00%s", l.TargetID, l.TargetSubID, cmd)
+	return Wire{Kind: EncodeHeating, Bytes: []byte(payload), Text: cmd, Number: v}, nil
+}
+
 // digits возвращает число знаков после запятой для текстового значения.
 // Минус единица — представление без округления, самое короткое из точных.
 func (l Link) digits() int {
@@ -257,6 +284,15 @@ func (l Link) digits() int {
 // ErrNoValue — в статусе элемента нет того, что читает связка. Это не
 // ошибка: у отопления событие несёт только состояние зоны, а уставка приходит
 // в полном статусе. Связка такое событие пропускает, не отмечая сбоя.
+// heatingMode — приставка команды режима отоплению.
+const heatingMode = "as:"
+
+// HeatingOffCmd — команда «всегда выключено».
+const HeatingOffCmd = "as:1"
+
+// heatingAlwaysOff — режим «всегда выключено» в байте 5 статуса отопления.
+const heatingAlwaysOff = 254
+
 var ErrNoValue = errors.New("в статусе элемента нет значения для этой связки")
 
 // Value читает значение элемента умного дома до перевода по таблице.
@@ -313,6 +349,15 @@ func (l Link) decodeValue(payload []byte) (string, error) {
 
 	case DecodeLamp:
 		return decodeLamp(payload)
+
+	case DecodeHeatingPower:
+		if len(payload) < 6 {
+			return "", ErrNoValue
+		}
+		if payload[5] == heatingAlwaysOff {
+			return StateOff, nil
+		}
+		return StateOn, nil
 
 	case DecodeHeating:
 		// Событие несёт один байт состояния зоны, уставки в нём нет.

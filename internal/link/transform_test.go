@@ -1,6 +1,7 @@
 package link
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -541,5 +542,55 @@ func TestBucketIgnoresNonNumber(t *testing.T) {
 	}
 	if w.Text != "offline" {
 		t.Errorf("текст = %q, ожидалось исходное слово", w.Text)
+	}
+}
+
+// Команда отоплению: адрес плитки, ноль-разделитель и ts:/as: — как в
+// setStatus(1000:102, "891:1\0ts:25") из скрипта умного дома.
+func TestEncodeHeating(t *testing.T) {
+	temp := Link{Direction: In, Encode: EncodeHeating, TargetID: 891, TargetSubID: 1}
+	w, err := temp.ToWire([]byte("25.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(w.Bytes); got != "891:1\x00ts:25" {
+		t.Errorf("уставка: %q", got)
+	}
+
+	power := temp
+	power.Values = map[string]string{"1": "as:1", "0": "as:2"}
+	w, err = power.ToWire([]byte("1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(w.Bytes); got != "891:1\x00as:1" {
+		t.Errorf("режим: %q", got)
+	}
+
+	// Непереведённое значение в связке режима не должно стать уставкой.
+	if _, err := power.ToWire([]byte("5")); err == nil {
+		t.Error("значение вне таблицы ушло уставкой")
+	}
+}
+
+// Включено ли отопление — по байту 5 полного статуса; событие в один байт
+// ответа не даёт.
+func TestDecodeHeatingPower(t *testing.T) {
+	l := Link{Direction: Out, Decode: DecodeHeatingPower}
+	for _, c := range []struct {
+		payload []byte
+		want    string
+	}{
+		{[]byte{0, 0, 0x15, 0, 0x14, 254}, StateOff},
+		{[]byte{1, 0, 0x15, 0, 0x14, 255}, StateOn},
+		{[]byte{1, 0, 0x15, 0, 0x14, 3}, StateOn},
+	} {
+		got, err := l.Value(c.payload)
+		if err != nil || got != c.want {
+			t.Errorf("%x: %q, %v; ожидалось %q", c.payload, got, err, c.want)
+		}
+	}
+	if _, err := l.Value([]byte{1}); !errors.Is(err, ErrNoValue) {
+		t.Errorf("однобайтовое событие: %v, ожидалось ErrNoValue", err)
 	}
 }

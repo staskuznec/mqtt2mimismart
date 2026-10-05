@@ -37,6 +37,20 @@ const (
 	EncodeByte   = "byte"   // один сырой байт: лампа, скрипт, клапан, шторы
 	EncodeSensor = "sensor" // fixed-point 8.8, два байта: датчики
 	EncodeText   = "text"   // строка: всё, что не влезает в 8.8
+
+	// EncodeHeating — команда отоплению. Статус valve-heating записью не
+	// меняется (в нём принимается только вкл/выкл зоны), уставку и режим
+	// сервер принимает через служебный адрес 1000:102 — так же, как
+	// setStatus из скрипта: "<адрес отопления>\0ts:25" ставит уставку,
+	// "\0as:1" — «всегда выключено», "\0as:-4" — ручной режим. Число
+	// уходит уставкой, строка "as:…" из таблицы значений — режимом.
+	EncodeHeating = "heating"
+)
+
+// Служебный адрес сервера для команд отоплению по адресу элемента.
+const (
+	HeatingCtlID    = 1000
+	HeatingCtlSubID = 102
 )
 
 // Способ прочитать значение элемента (для направления Out).
@@ -53,6 +67,10 @@ const (
 	//
 	// Это знание раньше жило в скрипте умного дома и дублировалось в каждом.
 	DecodeLamp = "lamp"
+
+	// DecodeHeatingPower — включено ли отопление: байт 5 полного статуса,
+	// 254 означает режим «всегда выключено». Выдаёт on или off.
+	DecodeHeatingPower = "heating-power"
 
 	// DecodeHeating — уставка элемента valve-heating.
 	//
@@ -155,6 +173,12 @@ type Link struct {
 	ToggleOnPress bool
 }
 
+// FromSnapshot сообщает, что связка читает полный статус отопления. Сервер
+// отдаёт его только в снимке состояний, а событие несёт один байт.
+func (l Link) FromSnapshot() bool {
+	return l.Decode == DecodeHeating || l.Decode == DecodeHeatingPower
+}
+
 // Addr возвращает адрес элемента в виде "id:subid".
 func (l Link) Addr() string { return fmt.Sprintf("%d:%d", l.TargetID, l.TargetSubID) }
 
@@ -222,7 +246,7 @@ func (l Link) validateIn() error {
 		return fmt.Errorf("извлечение %q: допустимы %q и %q", l.Extract, ExtractRaw, ExtractJSON)
 	}
 	switch l.Encode {
-	case EncodeByte, EncodeSensor, EncodeText:
+	case EncodeByte, EncodeSensor, EncodeText, EncodeHeating:
 	case "":
 		return fmt.Errorf("не задана форма значения: %q, %q или %q", EncodeByte, EncodeSensor, EncodeText)
 	default:
@@ -266,13 +290,13 @@ func (l Link) validateOut() error {
 		return fmt.Errorf("QoS %d: допустимы 0, 1 и 2", l.QoS)
 	}
 	switch l.Decode {
-	case DecodeByte, DecodeSensor, DecodeText, DecodeLamp, DecodeHeating:
+	case DecodeByte, DecodeSensor, DecodeText, DecodeLamp, DecodeHeating, DecodeHeatingPower:
 	case "":
-		return fmt.Errorf("не задан способ чтения элемента: %q, %q, %q, %q или %q",
-			DecodeByte, DecodeSensor, DecodeText, DecodeLamp, DecodeHeating)
+		return fmt.Errorf("не задан способ чтения элемента: %q, %q, %q, %q, %q или %q",
+			DecodeByte, DecodeSensor, DecodeText, DecodeLamp, DecodeHeating, DecodeHeatingPower)
 	default:
-		return fmt.Errorf("чтение элемента %q: допустимы %q, %q, %q, %q и %q",
-			l.Decode, DecodeByte, DecodeSensor, DecodeText, DecodeLamp, DecodeHeating)
+		return fmt.Errorf("чтение элемента %q: допустимы %q, %q, %q, %q, %q и %q",
+			l.Decode, DecodeByte, DecodeSensor, DecodeText, DecodeLamp, DecodeHeating, DecodeHeatingPower)
 	}
 	return nil
 }
