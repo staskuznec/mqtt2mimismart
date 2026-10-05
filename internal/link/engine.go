@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -84,6 +83,12 @@ type Engine struct {
 	last    map[int64]string
 	lastOut map[int64]string
 
+	// heat — последний полный статус отопления по адресу. Статус пишется в
+	// элемент целиком, и править в нём можно только то, что знаешь: уставку,
+	// не трогая режим, и наоборот. heatAddrs — какие адреса запоминать.
+	heat      map[string][]byte
+	heatAddrs map[string]bool
+
 	// state — последнее состояние, о котором отчиталось само устройство, по
 	// адресу элемента. Из него нажатие разворачивается в абсолютную команду.
 	state map[string]string
@@ -125,6 +130,7 @@ func NewEngine(sh Sender, mq Publisher, log *slog.Logger) *Engine {
 		last:     make(map[int64]string),
 		lastOut:  make(map[int64]string),
 		state:    make(map[string]string),
+		heat:     make(map[string][]byte),
 		echo:     make(map[string]echoEntry),
 		press:    make(map[string][]Link),
 		stats:    make(map[int64]*Stats),
@@ -161,6 +167,7 @@ func (e *Engine) SetLinks(links []Link) {
 	in := make([]Link, 0, len(links))
 	out := make(map[string][]Link)
 	press := make(map[string][]Link)
+	heatAddrs := make(map[string]bool)
 
 	for _, l := range links {
 		if !l.Enabled {
@@ -175,6 +182,9 @@ func (e *Engine) SetLinks(links []Link) {
 			if l.ToggleOnPress {
 				press[l.Addr()] = append(press[l.Addr()], l)
 			}
+			if l.Encode == EncodeHeating {
+				heatAddrs[l.Addr()] = true
+			}
 		case Out:
 			out[l.Addr()] = append(out[l.Addr()], l)
 		}
@@ -182,7 +192,7 @@ func (e *Engine) SetLinks(links []Link) {
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.in, e.out, e.press = in, out, press
+	e.in, e.out, e.press, e.heatAddrs = in, out, press, heatAddrs
 
 	// Кэш последних значений чистим по связкам, которых больше нет: иначе он
 	// растёт бесконечно, а при возврате удалённой связки хранил бы прошлое.
@@ -278,6 +288,24 @@ func (e *Engine) applyIn(ctx context.Context, l Link, payload []byte) {
 			"hint", "задайте множитель или выберите текстовую форму")
 	}
 
+	// Отопление: правка ложится на последний полный статус элемента. Пока
+	// его нет (первые секунды после старта), ждём — прибор повторит своё
+	// значение через минуту. Ничего не изменилось — писать незачем.
+	if wire.Kind == EncodeHeating {
+		e.mu.RLock()
+		status := e.heat[l.Addr()]
+		e.mu.RUnlock()
+		next, changed := PatchHeating(status, wire)
+		if !changed {
+			e.count(l.ID, func(s *Stats) { s.Skipped++ })
+			return
+		}
+		wire.Bytes = next
+		e.mu.Lock()
+		e.heat[l.Addr()] = next
+		e.mu.Unlock()
+	}
+
 	// Дедупликация: по таймеру устройства шлют одно и то же, и без неё в
 	// умный дом каждую секунду уходили бы одинаковые значения.
 	key := hex.EncodeToString(wire.Bytes)
@@ -291,31 +319,7 @@ func (e *Engine) applyIn(ctx context.Context, l Link, payload []byte) {
 		}
 	}
 
-	// Режим отоплению шлём, только когда плитка в другом состоянии. Прибор
-	// публикует своё «включено» раз в минуту, и без этой проверки первое же
-	// сообщение после старта шлюза сбросило бы автоматизацию, выбранную в
-	// приложении. Состояние плитки приходит снимком; пока его нет — ждём.
-	if wire.Kind == EncodeHeating && strings.HasPrefix(wire.Text, heatingMode) {
-		want := StateOn
-		if wire.Text == HeatingOffCmd {
-			want = StateOff
-		}
-		e.mu.RLock()
-		known := e.state[l.Addr()]
-		e.mu.RUnlock()
-		if known == "" || known == want {
-			e.count(l.ID, func(s *Stats) { s.Skipped++ })
-			return
-		}
-	}
-
-	// Команда отоплению идёт не в сам элемент, а в служебный адрес сервера;
-	// адрес отопления лежит в ней же.
-	toID, toSub := l.TargetID, l.TargetSubID
-	if wire.Kind == EncodeHeating {
-		toID, toSub = HeatingCtlID, HeatingCtlSubID
-	}
-	value, err := shclient.Raw(toID, toSub, wire.Bytes)
+	value, err := shclient.Raw(l.TargetID, l.TargetSubID, wire.Bytes)
 	if err != nil {
 		e.fail(l, err, "сборка пакета")
 		return
@@ -356,6 +360,16 @@ func (e *Engine) applyIn(ctx context.Context, l Link, payload []byte) {
 // OnEvent разбирает изменение элемента умного дома и публикует команды.
 func (e *Engine) OnEvent(ctx context.Context, ev Event) {
 	addr := ev.Addr()
+
+	// Полный статус отопления запоминаем, откуда бы он ни пришел: править его
+	// шлюз будет поверх последнего известного.
+	if len(ev.Payload) >= heatingStatusLen {
+		e.mu.Lock()
+		if e.heatAddrs[addr] {
+			e.heat[addr] = append([]byte(nil), ev.Payload[:heatingStatusLen]...)
+		}
+		e.mu.Unlock()
+	}
 
 	// Снимок состояний — не изменение. Транслировать его наружу означало бы
 	// при каждом подключении щёлкнуть всеми реле на объекте.
@@ -478,13 +492,6 @@ func (e *Engine) applyOut(l Link, ev Event) {
 		return
 	}
 	payload := l.MapValue(e.absolute(l, value))
-
-	// Включено ли отопление, знаем только отсюда: из статуса самой плитки.
-	if l.Decode == DecodeHeatingPower {
-		e.mu.Lock()
-		e.state[l.Addr()] = value
-		e.mu.Unlock()
-	}
 
 	// Состояния элементов приезжают снова и снова — в каждом ответе на запрос
 	// состояний. Без отсева повторов шлюз слал бы команду по каждой лампе на

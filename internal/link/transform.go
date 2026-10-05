@@ -1,6 +1,7 @@
 package link
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -247,29 +248,60 @@ func (l Link) encodeText(value string) (Wire, error) {
 	return Wire{Kind: EncodeText, Bytes: []byte(text), Text: text, Number: v}, nil
 }
 
-// encodeHeating готовит команду отоплению для служебного адреса 1000:102.
-//
-// Строка "as:…" — режим, её даёт таблица значений; всё остальное должно быть
-// числом и уходит уставкой.
+// encodeHeating разбирает, что поменять в статусе отопления. Сами байты
+// собирает движок: ему известен последний статус элемента, см. PatchHeating.
 func (l Link) encodeHeating(value string) (Wire, error) {
 	cmd := strings.TrimSpace(value)
-	var v float64
+	if cmd == StateOn || cmd == StateOff {
+		return Wire{Kind: EncodeHeating, Text: cmd}, nil
+	}
 	// Связка с таблицей значений — это связка режима. Значение, не попавшее в
-	// таблицу, уставкой уходить не должно: «0» из выключателя стало бы ts:0.
-	if !strings.HasPrefix(cmd, heatingMode) && len(l.Values) > 0 {
+	// таблицу, уставкой уходить не должно: «0» с выключателя стал бы нулём
+	// градусов.
+	if len(l.Values) > 0 {
 		return Wire{}, fmt.Errorf("значение %q не переведено в режим отопления: "+
-			"добавьте его в таблицу значений строкой вида %q", value, value+" = as:1")
+			"добавьте его в таблицу значений строкой %q или %q", value, value+" = on", value+" = off")
 	}
-	if !strings.HasPrefix(cmd, heatingMode) {
-		n, err := l.number(cmd)
-		if err != nil {
-			return Wire{}, err
+	v, err := l.number(cmd)
+	if err != nil {
+		return Wire{}, err
+	}
+	clamped := false
+	switch {
+	case v < sensorMin:
+		v, clamped = sensorMin, true
+	case v > sensorMax:
+		v, clamped = sensorMax, true
+	}
+	return Wire{Kind: EncodeHeating, Text: strconv.FormatFloat(v, 'f', -1, 64),
+		Number: v, Clamped: clamped}, nil
+}
+
+// Байты статуса отопления.
+const (
+	heatingStatusLen = 6
+	heatingManual    = 255
+)
+
+// PatchHeating вносит правку в полный статус отопления. Второе значение
+// сообщает, изменилось ли что-нибудь: писать то же самое незачем, а прибор
+// повторяет своё состояние раз в минуту.
+func PatchHeating(status []byte, w Wire) ([]byte, bool) {
+	if len(status) < heatingStatusLen {
+		return nil, false
+	}
+	next := append([]byte(nil), status[:heatingStatusLen]...)
+	switch w.Text {
+	case StateOff:
+		next[0], next[5] = 0, heatingAlwaysOff
+	case StateOn:
+		if next[5] == heatingAlwaysOff {
+			next[5] = heatingManual
 		}
-		v = n
-		cmd = "ts:" + strconv.FormatFloat(n, 'f', l.digits(), 64)
+	default:
+		binary.LittleEndian.PutUint16(next[1:3], uint16(w.Number*256))
 	}
-	payload := fmt.Sprintf("%d:%d\x00%s", l.TargetID, l.TargetSubID, cmd)
-	return Wire{Kind: EncodeHeating, Bytes: []byte(payload), Text: cmd, Number: v}, nil
+	return next, !bytes.Equal(next, status[:heatingStatusLen])
 }
 
 // digits возвращает число знаков после запятой для текстового значения.
@@ -284,12 +316,6 @@ func (l Link) digits() int {
 // ErrNoValue — в статусе элемента нет того, что читает связка. Это не
 // ошибка: у отопления событие несёт только состояние зоны, а уставка приходит
 // в полном статусе. Связка такое событие пропускает, не отмечая сбоя.
-// heatingMode — приставка команды режима отоплению.
-const heatingMode = "as:"
-
-// HeatingOffCmd — команда «всегда выключено».
-const HeatingOffCmd = "as:1"
-
 // heatingAlwaysOff — режим «всегда выключено» в байте 5 статуса отопления.
 const heatingAlwaysOff = 254
 

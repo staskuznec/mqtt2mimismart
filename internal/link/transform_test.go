@@ -1,6 +1,7 @@
 package link
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -545,31 +546,48 @@ func TestBucketIgnoresNonNumber(t *testing.T) {
 	}
 }
 
-// Команда отоплению: адрес плитки, ноль-разделитель и ts:/as: — как в
-// setStatus(1000:102, "891:1\0ts:25") из скрипта умного дома.
-func TestEncodeHeating(t *testing.T) {
-	temp := Link{Direction: In, Encode: EncodeHeating, TargetID: 891, TargetSubID: 1}
-	w, err := temp.ToWire([]byte("25.0"))
+// Правка статуса отопления: уставка ложится в байты 1–2, выключение — в
+// режим «всегда выкл», включение возвращает ручной режим. Остальные байты
+// остаются как были.
+func TestPatchHeating(t *testing.T) {
+	status := []byte{1, 0x00, 0x16, 0x80, 0x15, heatingManual} // 22 °C, в комнате 21.5
+
+	temp := Link{Direction: In, Encode: EncodeHeating}
+	w, err := temp.ToWire([]byte("25.5"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(w.Bytes); got != "891:1\x00ts:25" {
-		t.Errorf("уставка: %q", got)
+	got, changed := PatchHeating(status, w)
+	if !changed || !bytes.Equal(got, []byte{1, 0x80, 0x19, 0x80, 0x15, heatingManual}) {
+		t.Errorf("уставка: %x, изменено %v", got, changed)
+	}
+
+	// Та же уставка — писать нечего.
+	w, _ = temp.ToWire([]byte("22.0"))
+	if _, changed := PatchHeating(status, w); changed {
+		t.Error("та же уставка посчитана изменением")
 	}
 
 	power := temp
-	power.Values = map[string]string{"1": "as:1", "0": "as:2"}
-	w, err = power.ToWire([]byte("1"))
-	if err != nil {
-		t.Fatal(err)
+	power.Values = map[string]string{"1": "off", "0": "on"}
+	w, _ = power.ToWire([]byte("1"))
+	off, changed := PatchHeating(status, w)
+	if !changed || !bytes.Equal(off, []byte{0, 0x00, 0x16, 0x80, 0x15, heatingAlwaysOff}) {
+		t.Errorf("выключение: %x", off)
 	}
-	if got := string(w.Bytes); got != "891:1\x00as:1" {
-		t.Errorf("режим: %q", got)
+	w, _ = power.ToWire([]byte("0"))
+	if on, _ := PatchHeating(off, w); on[5] != heatingManual {
+		t.Errorf("включение: %x, ожидался ручной режим", on)
 	}
 
 	// Непереведённое значение в связке режима не должно стать уставкой.
 	if _, err := power.ToWire([]byte("5")); err == nil {
 		t.Error("значение вне таблицы ушло уставкой")
+	}
+
+	// Статуса ещё нет — править нечего.
+	if _, changed := PatchHeating(nil, w); changed {
+		t.Error("правка без известного статуса")
 	}
 }
 
