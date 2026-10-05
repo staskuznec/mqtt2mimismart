@@ -210,6 +210,34 @@ func TestSyncEventsNeverPublish(t *testing.T) {
 	}
 }
 
+// Уставка отопления живёт только в полном статусе, а он приходит снимком.
+// Её снимок пропускать обязан, иначе уставку из приложения не узнать вовсе;
+// повтор того же значения отсеивается, а однобайтовое событие пропускается.
+func TestHeatingSetpointFromSnapshot(t *testing.T) {
+	e, _, mq := newTestEngine()
+	e.SetLinks([]Link{{
+		ID: 3, Enabled: true, Direction: Out, OnlyChanged: true,
+		Topic:  "welrok/oz/set/setTemp",
+		Decode: DecodeHeating, TargetID: 100, TargetSubID: 10,
+	}})
+
+	status := []byte{1, 0x80, 0x16, 0x00, 0x15, 0xFF} // уставка 22.5
+	e.OnEvent(context.Background(), Event{ID: 100, SubID: 10, Payload: status, Sync: true})
+	e.OnEvent(context.Background(), Event{ID: 100, SubID: 10, Payload: status, Sync: true})
+	e.OnEvent(context.Background(), Event{ID: 100, SubID: 10, Payload: []byte{0}})
+
+	got := mq.all()
+	if len(got) != 1 {
+		t.Fatalf("опубликовано %d сообщений, ожидалось одно: %+v", len(got), got)
+	}
+	if got[0].payload != "22.5" {
+		t.Errorf("уставка %q, ожидалось 22.5", got[0].payload)
+	}
+	if st := e.Stats()[3]; st.Errors != 0 {
+		t.Errorf("однобайтовое событие отопления посчитано ошибкой: %+v", st)
+	}
+}
+
 // Петля: записали в лампу единицу, сервер вернул её же событием. Без защиты
 // шлюз опубликовал бы команду устройству, которое и так включено.
 func TestEchoOfOwnWriteIsNotRepublished(t *testing.T) {

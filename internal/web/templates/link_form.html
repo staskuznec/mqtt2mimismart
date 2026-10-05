@@ -101,6 +101,7 @@
       <option value="byte" {{if eq .Decode "byte"}}selected{{end}}>один байт как число</option>
       <option value="sensor" {{if eq .Decode "sensor"}}selected{{end}}>датчик 8.8</option>
       <option value="text" {{if eq .Decode "text"}}selected{{end}}>текст</option>
+      <option value="heating" {{if eq .Decode "heating"}}selected{{end}}>отопление (valve-heating): уставка из полного статуса</option>
     </select></label>
   <label>QoS
     <input type="text" name="qos" value="{{.QoS}}" style="max-width:80px"></label>

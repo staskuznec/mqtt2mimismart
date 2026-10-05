@@ -24,11 +24,19 @@ type NewItem struct {
 	SubID uint8
 	Name  string
 
-	// SubType — вид элемента в logic.xml: sensor, text или однобайтовый вроде
+	// Type — тип элемента в logic.xml. Пусто означает виртуальный: таких
+	// шлюз заводит почти всё, кроме исполнителей вроде отопления.
+	Type string
+
+	// SubType — вид виртуального элемента: sensor, text или однобайтовый вроде
 	// lamp. От него же зависит длина статуса.
 	SubType string
 	Length  int
 	Dim     string // подпись единицы: V, A, °C
+
+	// TempSensors — датчики температуры отопления, адреса через точку с
+	// запятой. Плитка показывает их среднее, по ним же работает автоматизация.
+	TempSensors string
 
 	// Comment — откуда элемент будет получать значение. В разметке уезжает
 	// комментарием: через полгода это единственный способ понять, что здесь
@@ -39,12 +47,27 @@ type NewItem struct {
 // Addr возвращает адрес в виде "563:110".
 func (i NewItem) Addr() string { return fmt.Sprintf("%d:%d", i.ID, i.SubID) }
 
+// Kind — чем элемент будет: тип исполнителя или вид виртуального.
+func (i NewItem) Kind() string {
+	if i.Type != "" {
+		return i.Type
+	}
+	return i.SubType
+}
+
 // Формы значения, под которые заводятся элементы.
 const (
 	subTypeSensor = "sensor"
 	subTypeText   = "text"
 	subTypeLamp   = "lamp"
 )
+
+// FormHeating — роль под отопление. Это не форма значения на проводе, а
+// исполнитель целиком: элемент valve-heating со своим статусом в шесть байт.
+const FormHeating = "heating"
+
+// typeHeating — тип элемента отопления в logic.xml.
+const typeHeating = "valve-heating"
 
 // ItemFor собирает описание элемента под форму значения связки.
 //
@@ -54,6 +77,8 @@ const (
 func ItemFor(id uint16, subID uint8, name, form, comment string) NewItem {
 	item := NewItem{ID: id, SubID: subID, Name: name, Comment: comment}
 	switch form {
+	case FormHeating:
+		item.Type = typeHeating
 	case FormSensor:
 		item.SubType, item.Length = subTypeSensor, 2
 	case FormByte:
@@ -190,6 +215,10 @@ func RenderArea(area string, items []NewItem) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "        <area name=%q>\n", area)
 	for _, it := range items {
+		if it.Type == typeHeating {
+			renderHeating(&b, it)
+			continue
+		}
 		b.WriteString("            <item")
 		fmt.Fprintf(&b, " addr=%q", it.Addr())
 		if it.Dim != "" {
@@ -206,4 +235,22 @@ func RenderArea(area string, items []NewItem) string {
 	}
 	b.WriteString("        </area>\n")
 	return b.String()
+}
+
+// renderHeating собирает строку отопления.
+//
+// Автоматизацию не описываем: сервер заводит её сам при первом запуске, с
+// уставкой по умолчанию, а дальше её крутят из приложения.
+func renderHeating(b *strings.Builder, it NewItem) {
+	b.WriteString("            <item")
+	fmt.Fprintf(b, " addr=%q", it.Addr())
+	fmt.Fprintf(b, " name=%q", it.Name)
+	if it.TempSensors != "" {
+		fmt.Fprintf(b, " temperature-sensors=%q", it.TempSensors)
+	}
+	fmt.Fprintf(b, " type=%q/>", typeHeating)
+	if it.Comment != "" {
+		fmt.Fprintf(b, " <!-- %s -->", it.Comment)
+	}
+	b.WriteString("\n")
 }

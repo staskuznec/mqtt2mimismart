@@ -53,6 +53,14 @@ const (
 	//
 	// Это знание раньше жило в скрипте умного дома и дублировалось в каждом.
 	DecodeLamp = "lamp"
+
+	// DecodeHeating — уставка элемента valve-heating.
+	//
+	// Полный статус отопления — шесть байт: состояние зоны, уставка (байты 1–2,
+	// младший первым), средняя температура датчиков и режим. Уставка — в том
+	// же fixed-point 8.8, что и у датчиков. Событие об изменении несёт только
+	// первый байт, уставки в нём нет — такие события пропускаются молча.
+	DecodeHeating = "heating"
 )
 
 // Kind — назначение исходящей связки.
@@ -258,13 +266,13 @@ func (l Link) validateOut() error {
 		return fmt.Errorf("QoS %d: допустимы 0, 1 и 2", l.QoS)
 	}
 	switch l.Decode {
-	case DecodeByte, DecodeSensor, DecodeText, DecodeLamp:
+	case DecodeByte, DecodeSensor, DecodeText, DecodeLamp, DecodeHeating:
 	case "":
-		return fmt.Errorf("не задан способ чтения элемента: %q, %q, %q или %q",
-			DecodeByte, DecodeSensor, DecodeText, DecodeLamp)
+		return fmt.Errorf("не задан способ чтения элемента: %q, %q, %q, %q или %q",
+			DecodeByte, DecodeSensor, DecodeText, DecodeLamp, DecodeHeating)
 	default:
-		return fmt.Errorf("чтение элемента %q: допустимы %q, %q, %q и %q",
-			l.Decode, DecodeByte, DecodeSensor, DecodeText, DecodeLamp)
+		return fmt.Errorf("чтение элемента %q: допустимы %q, %q, %q, %q и %q",
+			l.Decode, DecodeByte, DecodeSensor, DecodeText, DecodeLamp, DecodeHeating)
 	}
 	return nil
 }

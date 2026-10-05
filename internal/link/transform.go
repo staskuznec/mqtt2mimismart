@@ -3,6 +3,7 @@ package link
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -253,6 +254,11 @@ func (l Link) digits() int {
 	return *l.Precision
 }
 
+// ErrNoValue — в статусе элемента нет того, что читает связка. Это не
+// ошибка: у отопления событие несёт только состояние зоны, а уставка приходит
+// в полном статусе. Связка такое событие пропускает, не отмечая сбоя.
+var ErrNoValue = errors.New("в статусе элемента нет значения для этой связки")
+
 // Value читает значение элемента умного дома до перевода по таблице.
 //
 // Отдельно от [Link.ToPayload] потому, что движку нужно именно исходное
@@ -307,6 +313,14 @@ func (l Link) decodeValue(payload []byte) (string, error) {
 
 	case DecodeLamp:
 		return decodeLamp(payload)
+
+	case DecodeHeating:
+		// Событие несёт один байт состояния зоны, уставки в нём нет.
+		if len(payload) < 3 {
+			return "", ErrNoValue
+		}
+		raw := binary.LittleEndian.Uint16(payload[1:3])
+		return strconv.FormatFloat(float64(raw)/256, 'f', -1, 64), nil
 
 	default:
 		return "", fmt.Errorf("чтение элемента %q не поддерживается", l.Decode)

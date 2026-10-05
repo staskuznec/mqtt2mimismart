@@ -474,6 +474,14 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 			items = append(items, item)
 			assign[role.Key] = devtmpl.Addr{ID: item.ID, SubID: item.SubID}
 		}
+
+		// Датчик отопления известен только теперь: он мог быть выбран из
+		// готовых, а мог завестись в этой же пачке.
+		for i, role := range create {
+			if addr, ok := assign[role.Sensors]; ok && role.Sensors != "" {
+				items[i].TempSensors = fmt.Sprintf("%d:%d", addr.ID, addr.SubID)
+			}
+		}
 	}
 
 	device := store.Device{ID: deviceID, Name: name, TopicPrefix: prefix}
@@ -514,7 +522,7 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 		for i, item := range items {
 			data.Created = append(data.Created, createdRow{
 				Title: create[i].Title, Name: item.Name,
-				Addr: item.Addr(), Kind: item.SubType,
+				Addr: item.Addr(), Kind: item.Kind(),
 			})
 		}
 		s.render(w, "device_created", data)

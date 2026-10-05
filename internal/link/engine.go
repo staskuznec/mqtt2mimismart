@@ -3,6 +3,7 @@ package link
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -329,13 +330,26 @@ func (e *Engine) applyIn(ctx context.Context, l Link, payload []byte) {
 
 // OnEvent разбирает изменение элемента умного дома и публикует команды.
 func (e *Engine) OnEvent(ctx context.Context, ev Event) {
+	addr := ev.Addr()
+
 	// Снимок состояний — не изменение. Транслировать его наружу означало бы
 	// при каждом подключении щёлкнуть всеми реле на объекте.
+	//
+	// Исключение — уставка отопления. Сервер отдаёт её только в полном статусе
+	// элемента, то есть в снимке, а событие несёт один байт «вкл/выкл». Уставка
+	// при этом — уровень, а не нажатие: повторить её безопасно, а одинаковые
+	// значения отсеет OnlyChanged.
 	if ev.Sync {
+		e.mu.RLock()
+		links := e.out[addr]
+		e.mu.RUnlock()
+		for _, l := range links {
+			if l.Decode == DecodeHeating {
+				e.applyOut(l, ev)
+			}
+		}
 		return
 	}
-
-	addr := ev.Addr()
 
 	e.mu.RLock()
 	links := e.out[addr]
@@ -430,6 +444,10 @@ func (e *Engine) applyOut(l Link, ev Event) {
 	e.count(l.ID, func(s *Stats) { s.Matched++ })
 
 	value, err := l.Value(ev.Payload)
+	if errors.Is(err, ErrNoValue) {
+		e.count(l.ID, func(s *Stats) { s.Skipped++ })
+		return
+	}
 	if err != nil {
 		e.fail(l, err, "чтение значения элемента")
 		return

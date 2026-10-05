@@ -93,9 +93,10 @@
     <tbody>
       <tr><td class="mono">key</td><td>идентификатор, на него ссылаются связки</td></tr>
       <tr><td class="mono">title</td><td>как роль называется в форме развёртывания</td></tr>
-      <tr><td class="mono">form</td><td><code>byte</code>, <code>sensor</code> или <code>text</code> — подсказка, какой элемент подходит</td></tr>
+      <tr><td class="mono">form</td><td><code>byte</code>, <code>sensor</code> или <code>text</code> — подсказка, какой элемент подходит и каким его заводить; <code>heating</code> — заводится отопление <code>valve-heating</code></td></tr>
       <tr><td class="mono">hint</td><td>пояснение под названием</td></tr>
       <tr><td class="mono">required</td><td><code>true</code> — без неё шаблон не применить</td></tr>
+      <tr><td class="mono">sensors</td><td>для отопления: ключ роли-датчика, её элемент уйдёт в <code>temperature-sensors</code></td></tr>
     </tbody>
   </table>
 
@@ -108,7 +109,7 @@
       <tr><td class="mono">topic</td><td>топик с подстановкой <code>{{"{{prefix}}"}}</code></td></tr>
       <tr><td class="mono">pair</td><td>метка пары: две связки с одной меткой заводятся и удаляются вместе</td></tr>
       <tr><td class="mono">encode</td><td>форма записи для <code>in</code>: <code>byte</code>, <code>sensor</code>, <code>text</code></td></tr>
-      <tr><td class="mono">decode</td><td>чтение элемента для <code>out</code>: <code>lamp</code>, <code>byte</code>, <code>sensor</code>, <code>text</code></td></tr>
+      <tr><td class="mono">decode</td><td>чтение элемента для <code>out</code>: <code>lamp</code>, <code>byte</code>, <code>sensor</code>, <code>text</code>, <code>heating</code> — уставка из статуса отопления</td></tr>
       <tr><td class="mono">kind</td><td>для <code>out</code>: <code>command</code> — команда устройству, <code>state</code> — показание наружу</td></tr>
       <tr><td class="mono">values</td><td>таблица перевода: <code>{"on": "1", "off": "0"}</code></td></tr>
       <tr><td class="mono">unit</td><td>приписка к тексту, например <code>" Вт"</code></td></tr>

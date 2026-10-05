@@ -187,9 +187,20 @@ func (s *server) genElements(w http.ResponseWriter, r *http.Request) {
 
 		data.Items = append(data.Items, genRow{
 			Role: role.Key, Title: role.Title, Addr: item.Addr(),
-			Name: item.Name, Kind: item.SubType, Topic: item.Comment,
+			Name: item.Name, Kind: item.Kind(), Topic: item.Comment,
 		})
 		params.Set("role_"+role.Key, item.Addr())
+	}
+
+	// Датчик отопления — из этой же пачки: в ней известны оба адреса.
+	created := make(map[string]string, len(roles))
+	for i, role := range roles {
+		created[role.Key] = items[i].Addr()
+	}
+	for i, role := range roles {
+		if addr, ok := created[role.Sensors]; ok && role.Sensors != "" {
+			items[i].TempSensors = addr
+		}
 	}
 
 	data.XML = logic.RenderArea(data.Area, items)
