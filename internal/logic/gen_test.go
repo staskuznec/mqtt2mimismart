@@ -132,24 +132,22 @@ func TestRenderAreaIsValidXML(t *testing.T) {
 // падало с «свободно 5, нужно 10», хотя между областями пустовало полсотни
 // адресов. Разрывы в нумерации — обычное дело, и заполнять их безопасно:
 // адрес с областью никак не связан.
-// Отопление заводится не виртуальным, а исполнителем valve-heating, и его
-// датчиком сразу становится виртуальный датчик из той же пачки.
-func TestRenderAreaHeating(t *testing.T) {
-	floor := ItemFor(563, 120, "Пол ванная", FormSensor, "welrok/oz/get/floorTemp")
-	heat := ItemFor(563, 121, "Отопление ванная", FormHeating, "welrok/oz/set/setTemp")
-	heat.TempSensors = floor.Addr()
-
-	if heat.Kind() != "valve-heating" {
-		t.Errorf("вид отопления %q, ожидался valve-heating", heat.Kind())
+// Кондиционер заводится исполнителем со своими атрибутами, без sub-type и
+// длины статуса.
+func TestRenderAreaConditioner(t *testing.T) {
+	cond := ItemFor(335, 140, "Пол ванная", FormConditioner, "welrok/oz")
+	cond.Attrs = map[string]string{"t-min": "5", "modes": "0xC"}
+	if cond.Kind() != "conditioner" {
+		t.Errorf("вид %q, ожидался conditioner", cond.Kind())
 	}
 
-	out := RenderArea("Ванная", []NewItem{floor, heat})
+	out := RenderArea("Ванная", []NewItem{cond})
 	if err := xml.Unmarshal([]byte(out), new(struct {
 		XMLName xml.Name `xml:"area"`
 	})); err != nil {
 		t.Fatalf("разметка не разбирается: %v\n%s", err, out)
 	}
-	want := `<item addr="563:121" name="Отопление ванная" temperature-sensors="563:120" type="valve-heating"/>`
+	want := `<item addr="335:140" name="Пол ванная" modes="0xC" t-min="5" type="conditioner"/>`
 	if !strings.Contains(out, want) {
 		t.Errorf("в разметке нет строки:\n%s\nполучилось:\n%s", want, out)
 	}

@@ -72,7 +72,7 @@
       <option value="byte" {{if eq .Link.Encode "byte"}}selected{{end}}>один байт</option>
       <option value="sensor" {{if eq .Link.Encode "sensor"}}selected{{end}}>датчик 8.8</option>
       <option value="text" {{if eq .Link.Encode "text"}}selected{{end}}>текст</option>
-      <option value="heating" {{if eq .Link.Encode "heating"}}selected{{end}}>отопление (valve-heating): уставка или on/off в статус элемента</option>
+      <option value="conditioner" {{if eq .Link.Encode "conditioner"}}selected{{end}}>кондиционер: on/off, режим (fan, cool, dry, heat, auto) или температура в статус элемента</option>
     </select></label>
 
   <label>Единица <span>— приписка к тексту, например « Вт»</span>
@@ -102,8 +102,9 @@
       <option value="byte" {{if eq .Decode "byte"}}selected{{end}}>один байт как число</option>
       <option value="sensor" {{if eq .Decode "sensor"}}selected{{end}}>датчик 8.8</option>
       <option value="text" {{if eq .Decode "text"}}selected{{end}}>текст</option>
-      <option value="heating" {{if eq .Decode "heating"}}selected{{end}}>отопление (valve-heating): уставка из полного статуса</option>
-      <option value="heating-power" {{if eq .Decode "heating-power"}}selected{{end}}>отопление (valve-heating): включено или «всегда выключено»</option>
+      <option value="conditioner-power" {{if eq .Decode "conditioner-power"}}selected{{end}}>кондиционер: включён (on/off)</option>
+      <option value="conditioner-mode" {{if eq .Decode "conditioner-mode"}}selected{{end}}>кондиционер: режим (fan, cool, dry, heat, auto)</option>
+      <option value="conditioner-temp" {{if eq .Decode "conditioner-temp"}}selected{{end}}>кондиционер: температура (плюс сдвиг — t-min)</option>
     </select></label>
   <label>QoS
     <input type="text" name="qos" value="{{.QoS}}" style="max-width:80px"></label>

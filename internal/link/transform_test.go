@@ -546,69 +546,67 @@ func TestBucketIgnoresNonNumber(t *testing.T) {
 	}
 }
 
-// Правка статуса отопления: уставка ложится в байты 1–2, выключение — в
-// режим «всегда выкл», включение возвращает ручной режим. Остальные байты
-// остаются как были.
-func TestPatchHeating(t *testing.T) {
-	status := []byte{1, 0x00, 0x16, 0x80, 0x15, heatingManual} // 22 °C, в комнате 21.5
+// Статус кондиционера: включение в бите 0, режим в битах 4–7, температура в
+// первом байте за вычетом t-min. Правка меняет одно поле и не трогает другие.
+func TestPatchConditioner(t *testing.T) {
+	status := []byte{0x31, 25, 0, 0x00, 0x00, 0} // включён, Heat, 30 °C при t-min 5
 
-	temp := Link{Direction: In, Encode: EncodeHeating}
-	w, err := temp.ToWire([]byte("25.5"))
+	mode := Link{Direction: In, Encode: EncodeConditioner,
+		Values: map[string]string{"0": "heat", "1": "dry", "2": "dry"}}
+	w, err := mode.ToWire([]byte("1"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, changed := PatchHeating(status, w)
-	if !changed || !bytes.Equal(got, []byte{1, 0x80, 0x19, 0x80, 0x15, heatingManual}) {
-		t.Errorf("уставка: %x, изменено %v", got, changed)
+	got, changed := PatchConditioner(status, w)
+	if !changed || !bytes.Equal(got, []byte{0x21, 25}) {
+		t.Errorf("режим: %x, изменено %v", got, changed)
 	}
 
-	// Та же уставка — писать нечего.
+	power := Link{Direction: In, Encode: EncodeConditioner,
+		Values: map[string]string{"0": "on", "1": "off"}}
+	w, _ = power.ToWire([]byte("1"))
+	if got, _ := PatchConditioner(status, w); !bytes.Equal(got, []byte{0x30, 25}) {
+		t.Errorf("выключение: %x", got)
+	}
+
+	temp := Link{Direction: In, Encode: EncodeConditioner, Offset: -5}
 	w, _ = temp.ToWire([]byte("22.0"))
-	if _, changed := PatchHeating(status, w); changed {
+	if got, _ := PatchConditioner(status, w); !bytes.Equal(got, []byte{0x31, 17}) {
+		t.Errorf("уставка: %x", got)
+	}
+
+	// Та же температура — писать нечего.
+	w, _ = temp.ToWire([]byte("30.0"))
+	if _, changed := PatchConditioner(status, w); changed {
 		t.Error("та же уставка посчитана изменением")
 	}
 
-	power := temp
-	power.Values = map[string]string{"1": "off", "0": "on"}
-	w, _ = power.ToWire([]byte("1"))
-	off, changed := PatchHeating(status, w)
-	if !changed || !bytes.Equal(off, []byte{0, 0x00, 0x16, 0x80, 0x15, heatingAlwaysOff}) {
-		t.Errorf("выключение: %x", off)
-	}
-	w, _ = power.ToWire([]byte("0"))
-	if on, _ := PatchHeating(off, w); on[5] != heatingManual {
-		t.Errorf("включение: %x, ожидался ручной режим", on)
-	}
-
-	// Непереведённое значение в связке режима не должно стать уставкой.
-	if _, err := power.ToWire([]byte("5")); err == nil {
-		t.Error("значение вне таблицы ушло уставкой")
-	}
-
-	// Статуса ещё нет — править нечего.
-	if _, changed := PatchHeating(nil, w); changed {
-		t.Error("правка без известного статуса")
+	// Значение вне таблицы режима не должно стать температурой.
+	if _, err := mode.ToWire([]byte("7")); err == nil {
+		t.Error("значение вне таблицы ушло температурой")
 	}
 }
 
-// Включено ли отопление — по байту 5 полного статуса; событие в один байт
-// ответа не даёт.
-func TestDecodeHeatingPower(t *testing.T) {
-	l := Link{Direction: Out, Decode: DecodeHeatingPower}
+// Поля статуса кондиционера на выход; частичный статус без температуры —
+// не ошибка, а отсутствие значения.
+func TestDecodeConditioner(t *testing.T) {
+	status := []byte{0x21, 17, 0, 0, 0, 0}
 	for _, c := range []struct {
-		payload []byte
-		want    string
+		decode string
+		want   string
 	}{
-		{[]byte{0, 0, 0x15, 0, 0x14, 254}, StateOff},
-		{[]byte{1, 0, 0x15, 0, 0x14, 255}, StateOn},
-		{[]byte{1, 0, 0x15, 0, 0x14, 3}, StateOn},
+		{DecodeCondPower, StateOn},
+		{DecodeCondMode, "dry"},
+		{DecodeCondTemp, "22"},
 	} {
-		got, err := l.Value(c.payload)
+		l := Link{Direction: Out, Decode: c.decode, Offset: 5}
+		got, err := l.Value(status)
 		if err != nil || got != c.want {
-			t.Errorf("%x: %q, %v; ожидалось %q", c.payload, got, err, c.want)
+			t.Errorf("%s: %q, %v; ожидалось %q", c.decode, got, err, c.want)
 		}
 	}
-	if _, err := l.Value([]byte{1}); !errors.Is(err, ErrNoValue) {
-		t.Errorf("однобайтовое событие: %v, ожидалось ErrNoValue", err)
+	temp := Link{Direction: Out, Decode: DecodeCondTemp, Offset: 5}
+	if _, err := temp.Value([]byte{0x21}); !errors.Is(err, ErrNoValue) {
+		t.Errorf("частичный статус: %v, ожидалось ErrNoValue", err)
 	}
 }

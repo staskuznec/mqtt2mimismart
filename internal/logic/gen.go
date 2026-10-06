@@ -25,18 +25,17 @@ type NewItem struct {
 	Name  string
 
 	// Type — тип элемента в logic.xml. Пусто означает виртуальный: таких
-	// шлюз заводит почти всё, кроме исполнителей вроде отопления.
+	// шлюз заводит почти всё, кроме исполнителей вроде кондиционера.
 	Type string
+
+	// Attrs — дополнительные атрибуты исполнителя: маски, диапазоны.
+	Attrs map[string]string
 
 	// SubType — вид виртуального элемента: sensor, text или однобайтовый вроде
 	// lamp. От него же зависит длина статуса.
 	SubType string
 	Length  int
 	Dim     string // подпись единицы: V, A, °C
-
-	// TempSensors — датчики температуры отопления, адреса через точку с
-	// запятой. Плитка показывает их среднее, по ним же работает автоматизация.
-	TempSensors string
 
 	// Comment — откуда элемент будет получать значение. В разметке уезжает
 	// комментарием: через полгода это единственный способ понять, что здесь
@@ -62,12 +61,9 @@ const (
 	subTypeLamp   = "lamp"
 )
 
-// FormHeating — роль под отопление. Это не форма значения на проводе, а
-// исполнитель целиком: элемент valve-heating со своим статусом в шесть байт.
-const FormHeating = "heating"
-
-// typeHeating — тип элемента отопления в logic.xml.
-const typeHeating = "valve-heating"
+// FormConditioner — роль под кондиционер. Это не форма значения на проводе, а
+// исполнитель целиком: элемент conditioner со статусом в несколько байт.
+const FormConditioner = "conditioner"
 
 // ItemFor собирает описание элемента под форму значения связки.
 //
@@ -77,8 +73,8 @@ const typeHeating = "valve-heating"
 func ItemFor(id uint16, subID uint8, name, form, comment string) NewItem {
 	item := NewItem{ID: id, SubID: subID, Name: name, Comment: comment}
 	switch form {
-	case FormHeating:
-		item.Type = typeHeating
+	case FormConditioner:
+		item.Type = FormConditioner
 	case FormSensor:
 		item.SubType, item.Length = subTypeSensor, 2
 	case FormByte:
@@ -215,8 +211,8 @@ func RenderArea(area string, items []NewItem) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "        <area name=%q>\n", area)
 	for _, it := range items {
-		if it.Type == typeHeating {
-			renderHeating(&b, it)
+		if it.Type != "" {
+			renderActor(&b, it)
 			continue
 		}
 		b.WriteString("            <item")
@@ -237,18 +233,22 @@ func RenderArea(area string, items []NewItem) string {
 	return b.String()
 }
 
-// renderHeating собирает строку отопления.
-//
-// Автоматизацию не описываем: сервер заводит её сам при первом запуске, с
-// уставкой по умолчанию, а дальше её крутят из приложения.
-func renderHeating(b *strings.Builder, it NewItem) {
+// renderActor собирает строку исполнителя: адрес, имя, его атрибуты по
+// алфавиту и тип. Длины статуса и sub-type у исполнителя нет — их знает сам
+// сервер по типу.
+func renderActor(b *strings.Builder, it NewItem) {
 	b.WriteString("            <item")
 	fmt.Fprintf(b, " addr=%q", it.Addr())
 	fmt.Fprintf(b, " name=%q", it.Name)
-	if it.TempSensors != "" {
-		fmt.Fprintf(b, " temperature-sensors=%q", it.TempSensors)
+	keys := make([]string, 0, len(it.Attrs))
+	for k := range it.Attrs {
+		keys = append(keys, k)
 	}
-	fmt.Fprintf(b, " type=%q/>", typeHeating)
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Fprintf(b, " %s=%q", k, it.Attrs[k])
+	}
+	fmt.Fprintf(b, " type=%q/>", it.Type)
 	if it.Comment != "" {
 		fmt.Fprintf(b, " <!-- %s -->", it.Comment)
 	}

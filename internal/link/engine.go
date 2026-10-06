@@ -83,11 +83,11 @@ type Engine struct {
 	last    map[int64]string
 	lastOut map[int64]string
 
-	// heat — последний полный статус отопления по адресу. Статус пишется в
-	// элемент целиком, и править в нём можно только то, что знаешь: уставку,
-	// не трогая режим, и наоборот. heatAddrs — какие адреса запоминать.
-	heat      map[string][]byte
-	heatAddrs map[string]bool
+	// cond — последний известный статус кондиционера по адресу. Связка
+	// меняет одно поле, а пишется статус целиком, поэтому остальное надо
+	// знать. condAddrs — какие адреса запоминать.
+	cond      map[string][]byte
+	condAddrs map[string]bool
 
 	// state — последнее состояние, о котором отчиталось само устройство, по
 	// адресу элемента. Из него нажатие разворачивается в абсолютную команду.
@@ -130,7 +130,7 @@ func NewEngine(sh Sender, mq Publisher, log *slog.Logger) *Engine {
 		last:     make(map[int64]string),
 		lastOut:  make(map[int64]string),
 		state:    make(map[string]string),
-		heat:     make(map[string][]byte),
+		cond:     make(map[string][]byte),
 		echo:     make(map[string]echoEntry),
 		press:    make(map[string][]Link),
 		stats:    make(map[int64]*Stats),
@@ -167,7 +167,7 @@ func (e *Engine) SetLinks(links []Link) {
 	in := make([]Link, 0, len(links))
 	out := make(map[string][]Link)
 	press := make(map[string][]Link)
-	heatAddrs := make(map[string]bool)
+	condAddrs := make(map[string]bool)
 
 	for _, l := range links {
 		if !l.Enabled {
@@ -182,8 +182,8 @@ func (e *Engine) SetLinks(links []Link) {
 			if l.ToggleOnPress {
 				press[l.Addr()] = append(press[l.Addr()], l)
 			}
-			if l.Encode == EncodeHeating {
-				heatAddrs[l.Addr()] = true
+			if l.Encode == EncodeConditioner {
+				condAddrs[l.Addr()] = true
 			}
 		case Out:
 			out[l.Addr()] = append(out[l.Addr()], l)
@@ -192,7 +192,7 @@ func (e *Engine) SetLinks(links []Link) {
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.in, e.out, e.press, e.heatAddrs = in, out, press, heatAddrs
+	e.in, e.out, e.press, e.condAddrs = in, out, press, condAddrs
 
 	// Кэш последних значений чистим по связкам, которых больше нет: иначе он
 	// растёт бесконечно, а при возврате удалённой связки хранил бы прошлое.
@@ -288,21 +288,24 @@ func (e *Engine) applyIn(ctx context.Context, l Link, payload []byte) {
 			"hint", "задайте множитель или выберите текстовую форму")
 	}
 
-	// Отопление: правка ложится на последний полный статус элемента. Пока
-	// его нет (первые секунды после старта), ждём — прибор повторит своё
+	// Кондиционер: правка ложится на последний известный статус элемента.
+	// Пока его нет (первые секунды после старта), ждём — прибор повторит своё
 	// значение через минуту. Ничего не изменилось — писать незачем.
-	if wire.Kind == EncodeHeating {
+	if wire.Kind == EncodeConditioner {
 		e.mu.RLock()
-		status := e.heat[l.Addr()]
+		status, known := e.cond[l.Addr()]
 		e.mu.RUnlock()
-		next, changed := PatchHeating(status, wire)
-		if !changed {
+		next, changed := PatchConditioner(status, wire)
+		if !known || !changed {
 			e.count(l.ID, func(s *Stats) { s.Skipped++ })
 			return
 		}
 		wire.Bytes = next
 		e.mu.Lock()
-		e.heat[l.Addr()] = next
+		copy(e.cond[l.Addr()], next)
+		if len(e.cond[l.Addr()]) < len(next) {
+			e.cond[l.Addr()] = next
+		}
 		e.mu.Unlock()
 	}
 
@@ -361,32 +364,23 @@ func (e *Engine) applyIn(ctx context.Context, l Link, payload []byte) {
 func (e *Engine) OnEvent(ctx context.Context, ev Event) {
 	addr := ev.Addr()
 
-	// Полный статус отопления запоминаем, откуда бы он ни пришел: править его
-	// шлюз будет поверх последнего известного.
-	if len(ev.Payload) >= heatingStatusLen {
-		e.mu.Lock()
-		if e.heatAddrs[addr] {
-			e.heat[addr] = append([]byte(nil), ev.Payload[:heatingStatusLen]...)
+	// Статус кондиционера запоминаем откуда угодно, в том числе из снимка:
+	// править его шлюз будет поверх последнего известного. Статус можно
+	// установить и частично, поэтому пришедшие байты ложатся поверх прежних.
+	e.mu.Lock()
+	if e.condAddrs[addr] {
+		cur := e.cond[addr]
+		if len(cur) < len(ev.Payload) {
+			cur = append(cur, make([]byte, len(ev.Payload)-len(cur))...)
 		}
-		e.mu.Unlock()
+		copy(cur, ev.Payload)
+		e.cond[addr] = cur
 	}
+	e.mu.Unlock()
 
 	// Снимок состояний — не изменение. Транслировать его наружу означало бы
 	// при каждом подключении щёлкнуть всеми реле на объекте.
-	//
-	// Исключение — уставка отопления. Сервер отдаёт её только в полном статусе
-	// элемента, то есть в снимке, а событие несёт один байт «вкл/выкл». Уставка
-	// при этом — уровень, а не нажатие: повторить её безопасно, а одинаковые
-	// значения отсеет OnlyChanged.
 	if ev.Sync {
-		e.mu.RLock()
-		links := e.out[addr]
-		e.mu.RUnlock()
-		for _, l := range links {
-			if l.FromSnapshot() {
-				e.applyOut(l, ev)
-			}
-		}
 		return
 	}
 

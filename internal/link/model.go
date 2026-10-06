@@ -38,14 +38,15 @@ const (
 	EncodeSensor = "sensor" // fixed-point 8.8, два байта: датчики
 	EncodeText   = "text"   // строка: всё, что не влезает в 8.8
 
-	// EncodeHeating — правка статуса отопления valve-heating.
+	// EncodeConditioner — правка статуса кондиционера (элемент conditioner).
 	//
-	// Статус у отопления — шесть байт: состояние зоны, уставка (1–2), средняя
-	// температура (3–4) и режим (5). Шлюз берёт последний статус из снимка,
-	// меняет в нём своё поле и пишет его целиком обратно в элемент. Число
-	// уходит уставкой, on и off из таблицы значений — режимом: off — «всегда
-	// выключено», on — «ручной», если до этого было выключено.
-	EncodeHeating = "heating"
+	// Статус кондиционера — несколько байт: в нулевом включение (бит 0) и
+	// режим (биты 4–7), в первом температура за вычетом t-min. Связка меняет
+	// одно поле, поэтому шлюз берёт последний известный статус элемента,
+	// правит его и пишет обратно. on и off из таблицы значений — включение,
+	// fan, cool, dry, heat и auto — режим, число — температура; поправка
+	// «минус t-min» задаётся сдвигом связки.
+	EncodeConditioner = "conditioner"
 )
 
 // Способ прочитать значение элемента (для направления Out).
@@ -63,17 +64,12 @@ const (
 	// Это знание раньше жило в скрипте умного дома и дублировалось в каждом.
 	DecodeLamp = "lamp"
 
-	// DecodeHeatingPower — включено ли отопление: байт 5 полного статуса,
-	// 254 означает режим «всегда выключено». Выдаёт on или off.
-	DecodeHeatingPower = "heating-power"
-
-	// DecodeHeating — уставка элемента valve-heating.
-	//
-	// Полный статус отопления — шесть байт: состояние зоны, уставка (байты 1–2,
-	// младший первым), средняя температура датчиков и режим. Уставка — в том
-	// же fixed-point 8.8, что и у датчиков. Событие об изменении несёт только
-	// первый байт, уставки в нём нет — такие события пропускаются молча.
-	DecodeHeating = "heating"
+	// Поля статуса кондиционера. Включение даёт on или off, режим — fan,
+	// cool, dry, heat или auto, температура — число с прибавленным сдвигом
+	// связки (туда кладут t-min).
+	DecodeCondPower = "conditioner-power"
+	DecodeCondMode  = "conditioner-mode"
+	DecodeCondTemp  = "conditioner-temp"
 )
 
 // Kind — назначение исходящей связки.
@@ -168,12 +164,6 @@ type Link struct {
 	ToggleOnPress bool
 }
 
-// FromSnapshot сообщает, что связка читает полный статус отопления. Сервер
-// отдаёт его только в снимке состояний, а событие несёт один байт.
-func (l Link) FromSnapshot() bool {
-	return l.Decode == DecodeHeating || l.Decode == DecodeHeatingPower
-}
-
 // Addr возвращает адрес элемента в виде "id:subid".
 func (l Link) Addr() string { return fmt.Sprintf("%d:%d", l.TargetID, l.TargetSubID) }
 
@@ -241,7 +231,7 @@ func (l Link) validateIn() error {
 		return fmt.Errorf("извлечение %q: допустимы %q и %q", l.Extract, ExtractRaw, ExtractJSON)
 	}
 	switch l.Encode {
-	case EncodeByte, EncodeSensor, EncodeText, EncodeHeating:
+	case EncodeByte, EncodeSensor, EncodeText, EncodeConditioner:
 	case "":
 		return fmt.Errorf("не задана форма значения: %q, %q или %q", EncodeByte, EncodeSensor, EncodeText)
 	default:
@@ -259,6 +249,10 @@ func (l Link) validateIn() error {
 	}
 	return nil
 }
+
+// decodeList — допустимые способы чтения элемента, для сообщений об ошибке.
+var decodeList = strings.Join([]string{DecodeLamp, DecodeByte, DecodeSensor, DecodeText,
+	DecodeCondPower, DecodeCondMode, DecodeCondTemp}, ", ")
 
 func (l Link) validateOut() error {
 	if l.ToggleOnPress {
@@ -285,13 +279,12 @@ func (l Link) validateOut() error {
 		return fmt.Errorf("QoS %d: допустимы 0, 1 и 2", l.QoS)
 	}
 	switch l.Decode {
-	case DecodeByte, DecodeSensor, DecodeText, DecodeLamp, DecodeHeating, DecodeHeatingPower:
+	case DecodeByte, DecodeSensor, DecodeText, DecodeLamp,
+		DecodeCondPower, DecodeCondMode, DecodeCondTemp:
 	case "":
-		return fmt.Errorf("не задан способ чтения элемента: %q, %q, %q, %q, %q или %q",
-			DecodeByte, DecodeSensor, DecodeText, DecodeLamp, DecodeHeating, DecodeHeatingPower)
+		return fmt.Errorf("не задан способ чтения элемента: %s", decodeList)
 	default:
-		return fmt.Errorf("чтение элемента %q: допустимы %q, %q, %q, %q, %q и %q",
-			l.Decode, DecodeByte, DecodeSensor, DecodeText, DecodeLamp, DecodeHeating, DecodeHeatingPower)
+		return fmt.Errorf("чтение элемента %q: допустимы %s", l.Decode, decodeList)
 	}
 	return nil
 }

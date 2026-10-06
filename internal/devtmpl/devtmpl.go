@@ -51,11 +51,10 @@ type Role struct {
 	Hint     string `json:"hint"`     // подсказка, какой элемент подходит
 	Required bool   `json:"required"` // без него шаблон не применить
 
-	// Sensors — роль, чей элемент становится датчиком температуры исполнителя:
-	// при заведении отопления его адрес уходит в temperature-sensors. Без
-	// этого плитка показывала бы пустоту, а автоматизации сервера не по чему
-	// было бы работать.
-	Sensors string `json:"sensors,omitempty"`
+	// Attrs — атрибуты, с которыми шлюз заводит элемент в logic.xml, кроме
+	// адреса, имени и типа. Нужны исполнителям вроде кондиционера: у него
+	// маски режимов и диапазон температуры задаются только так.
+	Attrs map[string]string `json:"attrs,omitempty"`
 
 	// Types — типы элементов умного дома, которые сюда годятся: "lamp",
 	// "temperature-sensor" и прочие из logic.xml. Список сужает выбор в форме
@@ -93,6 +92,7 @@ type LinkSpec struct {
 	Unit        string            `json:"unit,omitempty"`
 	Precision   *int              `json:"precision,omitempty"`
 	Scale       float64           `json:"scale,omitempty"`
+	Offset      float64           `json:"offset,omitempty"`
 	QoS         byte              `json:"qos,omitempty"`
 	Retain      bool              `json:"retain,omitempty"`
 
@@ -183,13 +183,6 @@ func (t Template) Validate() error {
 		roles[r.Key] = true
 	}
 
-	for _, r := range t.Roles {
-		if r.Sensors != "" && !roles[r.Sensors] {
-			return fmt.Errorf("шаблон %q, роль %q: датчик берётся из роли %q, а она не описана",
-				t.Name, r.Key, r.Sensors)
-		}
-	}
-
 	for i, l := range t.Links {
 		if !roles[l.Role] {
 			return fmt.Errorf("шаблон %q, связка %d: роль %q не описана", t.Name, i+1, l.Role)
@@ -256,6 +249,7 @@ func (t Template) Apply(prefix string, assign map[string]Addr) ([]link.Link, err
 			ExtractPath:   spec.ExtractPath,
 			Values:        spec.Values,
 			Scale:         spec.Scale,
+			Offset:        spec.Offset,
 			TargetID:      addr.ID,
 			TargetSubID:   addr.SubID,
 			Encode:        spec.Encode,

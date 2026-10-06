@@ -63,8 +63,8 @@ func (l Link) ToWire(payload []byte) (Wire, error) {
 		return l.encodeByte(value)
 	case EncodeSensor:
 		return l.encodeSensor(value)
-	case EncodeHeating:
-		return l.encodeHeating(value)
+	case EncodeConditioner:
+		return l.encodeConditioner(value)
 	default:
 		return Wire{}, fmt.Errorf("форма значения %q не поддерживается", l.Encode)
 	}
@@ -248,61 +248,72 @@ func (l Link) encodeText(value string) (Wire, error) {
 	return Wire{Kind: EncodeText, Bytes: []byte(text), Text: text, Number: v}, nil
 }
 
-// encodeHeating разбирает, что поменять в статусе отопления. Сами байты
-// собирает движок: ему известен последний статус элемента, см. PatchHeating.
-func (l Link) encodeHeating(value string) (Wire, error) {
+// Режимы кондиционера: значение в битах 4–7 нулевого байта статуса.
+var condModes = []string{"fan", "cool", "dry", "heat", "auto"}
+
+// encodeConditioner разбирает, какое поле статуса кондиционера поменять. Сами
+// байты собирает движок: ему известен последний статус элемента, см.
+// PatchConditioner.
+func (l Link) encodeConditioner(value string) (Wire, error) {
 	cmd := strings.TrimSpace(value)
-	if cmd == StateOn || cmd == StateOff {
-		return Wire{Kind: EncodeHeating, Text: cmd}, nil
+	if cmd == StateOn || cmd == StateOff || condMode(cmd) >= 0 {
+		return Wire{Kind: EncodeConditioner, Text: cmd}, nil
 	}
-	// Связка с таблицей значений — это связка режима. Значение, не попавшее в
-	// таблицу, уставкой уходить не должно: «0» с выключателя стал бы нулём
-	// градусов.
+	// Связка с таблицей значений — это связка включения или режима. Значение,
+	// не попавшее в таблицу, температурой уходить не должно: «1» с прибора
+	// стало бы температурой t-min плюс один градус.
 	if len(l.Values) > 0 {
-		return Wire{}, fmt.Errorf("значение %q не переведено в режим отопления: "+
-			"добавьте его в таблицу значений строкой %q или %q", value, value+" = on", value+" = off")
+		return Wire{}, fmt.Errorf("значение %q не переведено в поле кондиционера: "+
+			"добавьте его в таблицу значений строкой вида %q", value, value+" = on")
 	}
 	v, err := l.number(cmd)
 	if err != nil {
 		return Wire{}, err
 	}
-	clamped := false
-	switch {
-	case v < sensorMin:
-		v, clamped = sensorMin, true
-	case v > sensorMax:
-		v, clamped = sensorMax, true
-	}
-	return Wire{Kind: EncodeHeating, Text: strconv.FormatFloat(v, 'f', -1, 64),
-		Number: v, Clamped: clamped}, nil
+	b, clamped := clampByte(v)
+	return Wire{Kind: EncodeConditioner, Text: strconv.Itoa(int(b)),
+		Number: float64(b), Clamped: clamped}, nil
 }
 
-// Байты статуса отопления.
-const (
-	heatingStatusLen = 6
-	heatingManual    = 255
-)
-
-// PatchHeating вносит правку в полный статус отопления. Второе значение
-// сообщает, изменилось ли что-нибудь: писать то же самое незачем, а прибор
-// повторяет своё состояние раз в минуту.
-func PatchHeating(status []byte, w Wire) ([]byte, bool) {
-	if len(status) < heatingStatusLen {
-		return nil, false
-	}
-	next := append([]byte(nil), status[:heatingStatusLen]...)
-	switch w.Text {
-	case StateOff:
-		next[0], next[5] = 0, heatingAlwaysOff
-	case StateOn:
-		if next[5] == heatingAlwaysOff {
-			next[5] = heatingManual
+// condMode возвращает номер режима кондиционера или -1.
+func condMode(name string) int {
+	for i, m := range condModes {
+		if m == name {
+			return i
 		}
-	default:
-		binary.LittleEndian.PutUint16(next[1:3], uint16(w.Number*256))
 	}
-	return next, !bytes.Equal(next, status[:heatingStatusLen])
+	return -1
 }
+
+// condStatusLen — длина статуса кондиционера, который пишет шлюз: включение
+// с режимом и температура. Жалюзи и обдув шлюз не трогает и не пишет.
+const condStatusLen = 2
+
+// PatchConditioner вносит правку в статус кондиционера. Второе значение
+// сообщает, изменилось ли что-нибудь: прибор повторяет своё состояние раз в
+// минуту, и писать то же самое незачем. Короткий статус (только что
+// заведённый элемент) дополняется нулями.
+func PatchConditioner(status []byte, w Wire) ([]byte, bool) {
+	cur := make([]byte, condStatusLen)
+	copy(cur, status)
+	next := append([]byte(nil), cur...)
+
+	switch {
+	case w.Text == StateOn:
+		next[0] |= 1
+	case w.Text == StateOff:
+		next[0] &^= 1
+	case condMode(w.Text) >= 0:
+		next[0] = next[0]&0x0F | byte(condMode(w.Text))<<4
+	default:
+		next[1] = byte(w.Number)
+	}
+	return next, !bytes.Equal(next, cur)
+}
+
+// ErrNoValue — в событии нет поля, которое читает связка. Не ошибка: статус
+// можно установить и частично, одним байтом, и температуры в таком событии нет.
+var ErrNoValue = errors.New("в статусе элемента нет значения для этой связки")
 
 // digits возвращает число знаков после запятой для текстового значения.
 // Минус единица — представление без округления, самое короткое из точных.
@@ -312,14 +323,6 @@ func (l Link) digits() int {
 	}
 	return *l.Precision
 }
-
-// ErrNoValue — в статусе элемента нет того, что читает связка. Это не
-// ошибка: у отопления событие несёт только состояние зоны, а уставка приходит
-// в полном статусе. Связка такое событие пропускает, не отмечая сбоя.
-// heatingAlwaysOff — режим «всегда выключено» в байте 5 статуса отопления.
-const heatingAlwaysOff = 254
-
-var ErrNoValue = errors.New("в статусе элемента нет значения для этой связки")
 
 // Value читает значение элемента умного дома до перевода по таблице.
 //
@@ -376,22 +379,30 @@ func (l Link) decodeValue(payload []byte) (string, error) {
 	case DecodeLamp:
 		return decodeLamp(payload)
 
-	case DecodeHeatingPower:
-		if len(payload) < 6 {
+	case DecodeCondPower:
+		if len(payload) < 1 {
 			return "", ErrNoValue
 		}
-		if payload[5] == heatingAlwaysOff {
-			return StateOff, nil
+		if payload[0]&1 == 1 {
+			return StateOn, nil
 		}
-		return StateOn, nil
+		return StateOff, nil
 
-	case DecodeHeating:
-		// Событие несёт один байт состояния зоны, уставки в нём нет.
-		if len(payload) < 3 {
+	case DecodeCondMode:
+		if len(payload) < 1 {
 			return "", ErrNoValue
 		}
-		raw := binary.LittleEndian.Uint16(payload[1:3])
-		return strconv.FormatFloat(float64(raw)/256, 'f', -1, 64), nil
+		m := int(payload[0] >> 4)
+		if m >= len(condModes) {
+			return "", fmt.Errorf("режим кондиционера %d не известен", m)
+		}
+		return condModes[m], nil
+
+	case DecodeCondTemp:
+		if len(payload) < 2 {
+			return "", ErrNoValue
+		}
+		return strconv.FormatFloat(float64(payload[1])+l.Offset, 'f', -1, 64), nil
 
 	default:
 		return "", fmt.Errorf("чтение элемента %q не поддерживается", l.Decode)

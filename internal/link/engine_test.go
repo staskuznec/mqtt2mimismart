@@ -210,63 +210,47 @@ func TestSyncEventsNeverPublish(t *testing.T) {
 	}
 }
 
-// Уставка отопления живёт только в полном статусе, а он приходит снимком.
-// Её снимок пропускать обязан, иначе уставку из приложения не узнать вовсе;
-// повтор того же значения отсеивается, а однобайтовое событие пропускается.
-func TestHeatingSetpointFromSnapshot(t *testing.T) {
-	e, _, mq := newTestEngine()
-	e.SetLinks([]Link{{
-		ID: 3, Enabled: true, Direction: Out, OnlyChanged: true,
-		Topic:  "welrok/oz/set/setTemp",
-		Decode: DecodeHeating, TargetID: 100, TargetSubID: 10,
-	}})
-
-	status := []byte{1, 0x80, 0x16, 0x00, 0x15, 0xFF} // уставка 22.5
-	e.OnEvent(context.Background(), Event{ID: 100, SubID: 10, Payload: status, Sync: true})
-	e.OnEvent(context.Background(), Event{ID: 100, SubID: 10, Payload: status, Sync: true})
-	e.OnEvent(context.Background(), Event{ID: 100, SubID: 10, Payload: []byte{0}})
-
-	got := mq.all()
-	if len(got) != 1 {
-		t.Fatalf("опубликовано %d сообщений, ожидалось одно: %+v", len(got), got)
-	}
-	if got[0].payload != "22.5" {
-		t.Errorf("уставка %q, ожидалось 22.5", got[0].payload)
-	}
-	if st := e.Stats()[3]; st.Errors != 0 {
-		t.Errorf("однобайтовое событие отопления посчитано ошибкой: %+v", st)
-	}
-}
-
-// Отоплению пишется весь статус, поэтому без известного статуса шлюз ждёт,
-// а повтор того же состояния с прибора не пишет ничего.
-func TestHeatingWritesOnlyChanges(t *testing.T) {
-	e, sh, _ := newTestEngine()
-	e.SetLinks([]Link{{
-		ID: 1, Enabled: true, Direction: In, Topic: "welrok/oz/get/powerOff",
-		Encode: EncodeHeating, Values: map[string]string{"1": "off", "0": "on"},
-		TargetID: 100, TargetSubID: 10,
-	}})
+// Кондиционер: пока статус не известен, шлюз ждёт; потом правит одно поле и
+// пишет статус, а повтор того же значения с прибора не пишет ничего.
+// Снимок состояний статус обновляет, но наружу командой не уходит.
+func TestConditionerWritesOnlyChanges(t *testing.T) {
+	e, sh, mq := newTestEngine()
+	e.SetLinks([]Link{
+		{ID: 1, Enabled: true, Direction: In, Topic: "welrok/oz/get/typeCtrl",
+			Encode: EncodeConditioner, Values: map[string]string{"0": "heat", "1": "dry"},
+			TargetID: 335, TargetSubID: 140},
+		{ID: 2, Enabled: true, Direction: Out, Topic: "welrok/oz/set/typeCtrl",
+			Decode: DecodeCondMode, Values: map[string]string{"heat": "0", "dry": "1"},
+			TargetID: 335, TargetSubID: 140},
+	})
 	ctx := context.Background()
 
-	// Статуса плитки ещё нет — ничего не шлём.
-	e.OnMessage(ctx, "welrok/oz/get/powerOff", []byte("0"))
+	e.OnMessage(ctx, "welrok/oz/get/typeCtrl", []byte("1"))
 	if sh.count() != 0 {
-		t.Fatal("статус ушёл, пока плитка не отчиталась")
+		t.Fatal("статус ушёл, пока кондиционер не отчитался")
 	}
 
-	// Плитка включена, прибор включён — писать нечего.
-	e.OnEvent(ctx, Event{ID: 100, SubID: 10, Payload: []byte{1, 0, 0x15, 0, 0x14, 255}, Sync: true})
-	e.OnMessage(ctx, "welrok/oz/get/powerOff", []byte("0"))
-	if sh.count() != 0 {
-		t.Fatal("статус ушёл, хотя плитка уже включена")
+	e.OnEvent(ctx, Event{ID: 335, SubID: 140, Payload: []byte{0x31, 25, 0, 0, 0, 0}, Sync: true})
+	if len(mq.all()) != 0 {
+		t.Fatal("снимок состояний ушёл на прибор командой")
 	}
 
-	// Прибор выключили кнопкой — плитка должна выключиться, и только один раз.
-	e.OnMessage(ctx, "welrok/oz/get/powerOff", []byte("1"))
-	e.OnMessage(ctx, "welrok/oz/get/powerOff", []byte("1"))
+	e.OnMessage(ctx, "welrok/oz/get/typeCtrl", []byte("0"))
+	if sh.count() != 0 {
+		t.Fatal("статус ушёл, хотя режим уже Heat")
+	}
+
+	e.OnMessage(ctx, "welrok/oz/get/typeCtrl", []byte("1"))
+	e.OnMessage(ctx, "welrok/oz/get/typeCtrl", []byte("1"))
 	if sh.count() != 1 {
-		t.Fatalf("отправлено %d, ожидался один статус «всегда выключено»", sh.count())
+		t.Fatalf("отправлено %d, ожидалась одна правка режима", sh.count())
+	}
+
+	// Режим переключили в приложении — команда уходит прибору.
+	e.OnEvent(ctx, Event{ID: 335, SubID: 140, Payload: []byte{0x31, 25, 0, 0, 0, 0}})
+	got := mq.all()
+	if len(got) != 1 || got[0].payload != "0" {
+		t.Fatalf("на прибор ушло %+v, ожидался режим 0 (по полу)", got)
 	}
 }
 
