@@ -60,6 +60,26 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Учётная запись для скачивания на месте
+        # Без неё сборка проходит молча, но шлюз из неё знает только GitHub и
+        # обновления со своего git не увидит — так вышли v0.14.0 и v0.14.1.
+        # Релиз без учётной записи не выпускаем; проверка ветки только
+        # предупреждает, и ею же удобно проверить секреты до тега.
+        env:
+          DOWNLOAD_USER: ${{ secrets.DOWNLOAD_USER }}
+          DOWNLOAD_TOKEN: ${{ secrets.DOWNLOAD_TOKEN }}
+        run: |
+          if [ -n "$DOWNLOAD_USER" ] && [ -n "$DOWNLOAD_TOKEN" ]; then
+            echo "Секреты DOWNLOAD_USER и DOWNLOAD_TOKEN заданы."
+            exit 0
+          fi
+          msg="Нет секрета DOWNLOAD_USER или DOWNLOAD_TOKEN в Settings → Secrets and variables → Actions → Repository secrets"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            echo "::error::$msg: шлюз из такой сборки не увидит обновлений со своего git."
+            exit 1
+          fi
+          echo "::warning::$msg."
+
       - name: Сборка под ${{ matrix.suffix }}
         env:
           GOOS: linux
