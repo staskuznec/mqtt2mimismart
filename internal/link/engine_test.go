@@ -713,3 +713,47 @@ func TestPressIgnoredWithoutFlag(t *testing.T) {
 		t.Errorf("отправлено %d значений, ожидалось одно: нажатие не должно было ничего писать", sh.count())
 	}
 }
+
+// Сервер возвращает запись шлюза статусом целиком, и такое событие эхом не
+// распознаётся. Прибору оно уходить не должно: в нём нет ничего нового, а
+// уставка в нём — из старого снимка. Запрос из приложения уходит прибору
+// только изменённым полем, а режима, которого прибор не знает, не уходит вовсе.
+func TestConditionerSendsOnlyChangedField(t *testing.T) {
+	e, sh, mq := newTestEngine()
+	e.SetLinks([]Link{
+		{ID: 1, Enabled: true, Direction: In, Topic: "welrok/oz/get/powerOff",
+			Encode: EncodeConditioner, Values: map[string]string{"0": "on", "1": "off"},
+			TargetID: 335, TargetSubID: 140},
+		{ID: 2, Enabled: true, Direction: Out, Topic: "welrok/oz/set/powerOff",
+			Decode: DecodeCondPower, Values: map[string]string{"on": "0", "off": "1"},
+			OnlyChanged: true, TargetID: 335, TargetSubID: 140},
+		{ID: 3, Enabled: true, Direction: Out, Topic: "welrok/oz/set/typeCtrl",
+			Decode: DecodeCondMode, Values: map[string]string{"heat": "0", "dry": "1"},
+			OnlyChanged: true, TargetID: 335, TargetSubID: 140},
+		{ID: 4, Enabled: true, Direction: Out, Topic: "welrok/oz/set/setTemp",
+			Decode: DecodeCondTemp, Offset: 5, OnlyChanged: true,
+			TargetID: 335, TargetSubID: 140},
+	})
+	ctx := context.Background()
+
+	e.OnEvent(ctx, Event{ID: 335, SubID: 140, Payload: []byte{0x30, 13}, Sync: true}) // выкл, Heat, 18 °C
+	e.OnMessage(ctx, "welrok/oz/get/powerOff", []byte("0"))                            // прибор включён
+	if sh.count() != 1 {
+		t.Fatalf("отправлено %d, ожидалась запись включения", sh.count())
+	}
+	e.OnEvent(ctx, Event{ID: 335, SubID: 140, Payload: []byte{0x31, 13, 0, 0, 0, 0}})
+	if got := mq.all(); len(got) != 0 {
+		t.Fatalf("эхо записи ушло прибору: %+v", got)
+	}
+
+	e.OnEvent(ctx, Event{ID: 335, SubID: 140, Payload: []byte{0x21, 13, 0, 0, 0, 0}}) // Dry
+	got := mq.all()
+	if len(got) != 1 || got[0].topic != "welrok/oz/set/typeCtrl" || got[0].payload != "1" {
+		t.Fatalf("на прибор ушло %+v, ожидался только режим 1", got)
+	}
+
+	e.OnEvent(ctx, Event{ID: 335, SubID: 140, Payload: []byte{0x11, 13, 0, 0, 0, 0}}) // Cool
+	if got := mq.all(); len(got) != 1 {
+		t.Fatalf("неизвестный прибору режим ушёл на шину: %+v", got[1:])
+	}
+}

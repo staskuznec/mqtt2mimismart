@@ -331,6 +331,15 @@ func (l Link) digits() int {
 // может превратить "toggle" во что угодно.
 func (l Link) Value(payload []byte) (string, error) { return l.decodeValue(payload) }
 
+// condField сообщает, что связка читает поле статуса кондиционера.
+func (l Link) condField() bool {
+	switch l.Decode {
+	case DecodeCondPower, DecodeCondMode, DecodeCondTemp:
+		return true
+	}
+	return false
+}
+
 // MapValue переводит значение по таблице связки.
 func (l Link) MapValue(value string) string {
 	if mapped, ok := l.Values[value]; ok {
