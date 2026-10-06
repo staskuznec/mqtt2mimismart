@@ -24,11 +24,24 @@ import (
 )
 
 const (
-	// repo — где живут релизы.
+	// repo — репозиторий на GitHub. Релизы теперь выходят на своём git, но
+	// уже поставленные шлюзы знают только этот адрес, и первое обновление
+	// после переезда они берут здесь. Поэтому он остаётся запасным.
 	repo = "staskuznec/mqtt2mimismart"
 
-	// releasesURL — публичный API GitHub, без ключа и без учётной записи.
-	releasesURL = "https://api.github.com/repos/" + repo + "/releases/latest"
+	// giteaPackages — свой git, основное место релизов: generic-пакет Gitea.
+	// Файлы версии лежат в <giteaPackages><версия>/<файл>, а номер последней —
+	// в <giteaPackages>latest/VERSION.
+	//
+	// Пакет, а не релиз репозитория: репозиторий закрытый, и учётной записи
+	// для скачивания хватает токена с правом read:package. Код с ним не
+	// прочитать, а он вшит в каждый шлюз и в install.sh.
+	giteaPackages = "https://git.kuznec.team/api/packages/skut/generic/mqtt2mimismart/"
+
+	// installCmd — как запустить установщик. Ссылка ведёт на GitHub: там
+	// install.sh открыт без входа, а версию и файлы он берёт со своего git.
+	installCmd = "curl -fsSL https://github.com/" + repo +
+		"/releases/latest/download/install.sh | sudo sh"
 
 	// checkInterval — как часто спрашиваем сами, в фоне. Раз в сутки: релизы
 	// выходят реже, а у неавторизованного доступа к API есть предел обращений.
@@ -42,25 +55,94 @@ const (
 	requestTimeout = 10 * time.Second
 )
 
+// Учётная запись для скачивания со своего git. Подставляется при сборке:
+//
+//	-X github.com/staskuznec/mqtt2mimismart/internal/update.giteaUser=...
+//	-X github.com/staskuznec/mqtt2mimismart/internal/update.giteaToken=...
+//
+// В исходниках её нет намеренно: репозиторий виден шире, чем бинарник. Без
+// неё (сборка разработчика) шлюз спрашивает только GitHub.
+var (
+	giteaUser  string
+	giteaToken string
+)
+
+// source — откуда берутся релизы.
+type source struct {
+	name     string // для сообщений и страницы «Обзор»
+	latest   string // где узнать последнюю версию
+	plain    bool   // по latest лежит номер версии текстом, а не JSON релиза
+	download string // начало адреса файлов релиза; дальше версия и имя файла
+
+	user, token string // учётная запись; пустая — без входа
+}
+
+// sources — источники в порядке предпочтения: при равной версии берётся
+// первый.
+func sources() []source {
+	var out []source
+	if giteaToken != "" {
+		out = append(out, source{
+			name:     "git.kuznec.team",
+			latest:   giteaPackages + "latest/VERSION",
+			plain:    true,
+			download: giteaPackages,
+			user:     giteaUser,
+			token:    giteaToken,
+		})
+	}
+	return append(out, source{
+		name:     "GitHub",
+		latest:   "https://api.github.com/repos/" + repo + "/releases/latest",
+		download: "https://github.com/" + repo + "/releases/download/",
+	})
+}
+
+// request готовит запрос к источнику, с учётной записью, если она есть.
+//
+// Если запрос перенаправят на другой сервер (файлы пакетов бывают в
+// отдельном хранилище), net/http заголовок авторизации туда не передаст.
+func (s source) request(ctx context.Context, url string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if s.token != "" {
+		req.SetBasicAuth(s.user, s.token)
+	}
+	return req, nil
+}
+
+// loginPage сообщает, что вместо ответа сервер отправил на страницу входа.
+// Gitea так отвечает, когда учётной записи нет или права у неё отозвали, и
+// статус у такого ответа 200 — без этой проверки страница входа сошла бы за
+// файл релиза.
+func loginPage(resp *http.Response) bool {
+	return strings.HasSuffix(resp.Request.URL.Path, "/user/login")
+}
+
 // Info — что известно об обновлении.
 type Info struct {
 	Current   string    // версия, которая работает сейчас
 	Latest    string    // последняя опубликованная
 	Available bool      // есть ли смысл обновляться
-	URL       string    // страница релиза
+	URL       string    // страница релиза; у пакета её нет
+	Source    string    // откуда взята последняя версия
 	CheckedAt time.Time //
 	Error     string    // почему не удалось проверить
 }
 
-// Checker периодически спрашивает GitHub о новых версиях.
+// Checker периодически спрашивает источники релизов о новых версиях.
 type Checker struct {
 	current string
 	client  *http.Client
 	log     *slog.Logger
+	sources []source
 
 	mu       sync.Mutex
 	info     Info
-	checking bool // проверка уже идёт: два запроса подряд ни к чему
+	from     source // источник последней версии: оттуда и скачиваем
+	checking bool   // проверка уже идёт: два запроса подряд ни к чему
 }
 
 // New создаёт проверяльщика для текущей версии.
@@ -72,6 +154,7 @@ func New(current string, log *slog.Logger) *Checker {
 		current: current,
 		client:  &http.Client{Timeout: requestTimeout},
 		log:     log,
+		sources: sources(),
 		info:    Info{Current: current},
 	}
 }
@@ -133,41 +216,80 @@ func (c *Checker) EnsureFresh(ctx context.Context) {
 	}()
 }
 
-// Check спрашивает GitHub о последней версии.
+// Check спрашивает все источники и берёт самую новую версию.
+//
+// Спрашиваем все, а не до первого ответа: пока идёт переезд, свежий релиз
+// может оказаться только в одном месте — сборка на другом отстала или
+// сломалась, — и шлюз не должен из-за этого застрять на старой версии.
 func (c *Checker) Check(ctx context.Context) Info {
 	info := Info{Current: c.current, CheckedAt: time.Now()}
 
-	latest, url, err := c.fetch(ctx)
-	if err != nil {
+	var (
+		from source
+		errs []string
+	)
+	for _, s := range c.sources {
+		latest, url, err := c.fetch(ctx, s)
+		if err != nil {
+			errs = append(errs, s.name+": "+err.Error())
+			continue
+		}
+		if info.Latest == "" || Newer(info.Latest, latest) {
+			info.Latest, info.URL, info.Source, from = latest, url, s.name, s
+		}
+	}
+
+	if info.Latest == "" {
 		// Отсутствие интернета — обычное дело на объекте, и ошибкой работы
 		// шлюза это не является: просто сообщаем и живём дальше.
-		info.Error = err.Error()
+		info.Error = strings.Join(errs, "; ")
 	} else {
-		info.Latest, info.URL = latest, url
-		info.Available = Newer(c.current, latest)
+		info.Available = Newer(c.current, info.Latest)
+		if len(errs) > 0 {
+			c.log.Debug("не все источники релизов ответили", "err", strings.Join(errs, "; "))
+		}
 	}
 
 	c.mu.Lock()
 	c.info = info
+	if info.Latest != "" {
+		c.from = from
+	}
 	c.mu.Unlock()
 	return info
 }
 
-func (c *Checker) fetch(ctx context.Context) (version, url string, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releasesURL, nil)
+func (c *Checker) fetch(ctx context.Context, s source) (version, url string, err error) {
+	req, err := s.request(ctx, s.latest)
 	if err != nil {
 		return "", "", err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return "", "", fmt.Errorf("не удалось спросить GitHub: %w", err)
+		return "", "", fmt.Errorf("не удалось спросить: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("GitHub ответил %s", resp.Status)
+		return "", "", fmt.Errorf("ответ %s", resp.Status)
+	}
+	if loginPage(resp) {
+		return "", "", fmt.Errorf("нет доступа: сервер просит войти")
+	}
+
+	// У пакета страницы релиза нет: на «Обзоре» будет только номер.
+	if s.plain {
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 64))
+		if err != nil {
+			return "", "", fmt.Errorf("ответ не прочитался: %w", err)
+		}
+		version := strings.TrimSpace(string(body))
+		if _, ok := parse(version); !ok {
+			return "", "", fmt.Errorf("в ответе не номер версии: %q", version)
+		}
+		return version, "", nil
 	}
 
 	var release struct {
@@ -175,10 +297,10 @@ func (c *Checker) fetch(ctx context.Context) (version, url string, err error) {
 		HTMLURL string `json:"html_url"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return "", "", fmt.Errorf("ответ GitHub не разобрался: %w", err)
+		return "", "", fmt.Errorf("ответ не разобрался: %w", err)
 	}
 	if release.TagName == "" {
-		return "", "", fmt.Errorf("в ответе GitHub нет номера версии")
+		return "", "", fmt.Errorf("в ответе нет номера версии")
 	}
 	return release.TagName, release.HTMLURL, nil
 }
@@ -239,6 +361,9 @@ func (c *Checker) Apply(ctx context.Context) error {
 	if info.Latest == "" {
 		info = c.Check(ctx)
 	}
+	c.mu.Lock()
+	from := c.from
+	c.mu.Unlock()
 	if !info.Available {
 		return fmt.Errorf("обновляться не на что: установлена %s", info.Current)
 	}
@@ -252,14 +377,14 @@ func (c *Checker) Apply(ctx context.Context) error {
 	}
 
 	asset := "mqtt2mimismart-" + assetSuffix()
-	base := "https://github.com/" + repo + "/releases/download/" + info.Latest
+	base := from.download + info.Latest
 
-	binary, err := c.download(ctx, base+"/"+asset)
+	binary, err := c.download(ctx, from, base+"/"+asset)
 	if err != nil {
 		return err
 	}
 
-	sums, err := c.download(ctx, base+"/SHA256SUMS")
+	sums, err := c.download(ctx, from, base+"/SHA256SUMS")
 	if err != nil {
 		return fmt.Errorf("не удалось получить контрольные суммы: %w", err)
 	}
@@ -283,8 +408,7 @@ func (c *Checker) Apply(ctx context.Context) error {
 		return fmt.Errorf("не удалось записать в %s: %w.\n\n"+
 			"Скорее всего каталог закрыт настройкой службы (ProtectSystem=strict). "+
 			"Запустите установщик — он добавит каталог в ReadWritePaths:\n"+
-			"curl -fsSL https://github.com/staskuznec/mqtt2mimismart/releases/latest/download/install.sh | sudo sh",
-			dir, err)
+			installCmd, dir, err)
 	}
 
 	// Прежний сохраняем: откат должен быть в одно движение.
@@ -296,7 +420,7 @@ func (c *Checker) Apply(ctx context.Context) error {
 
 	// Вкладка в панели умного дома едет в том же релизе. Её неудача не
 	// отменяет обновления шлюза: он уже заменён и работает.
-	if err := c.updatePanelTab(ctx, info.Latest); err != nil {
+	if err := c.updatePanelTab(ctx, from, info.Latest); err != nil {
 		c.log.Warn("не удалось обновить вкладку в панели",
 			"err", err,
 			"как быть", "запустите install.sh — он положит её от root")
@@ -305,8 +429,8 @@ func (c *Checker) Apply(ctx context.Context) error {
 }
 
 // download качает файл целиком.
-func (c *Checker) download(ctx context.Context, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func (c *Checker) download(ctx context.Context, s source, url string) ([]byte, error) {
+	req, err := s.request(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -322,6 +446,9 @@ func (c *Checker) download(ctx context.Context, url string) ([]byte, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("сервер ответил %s на %s", resp.Status, url)
+	}
+	if loginPage(resp) {
+		return nil, fmt.Errorf("нет доступа к %s: сервер просит войти", url)
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 }
@@ -365,7 +492,7 @@ var panelTabPaths = []string{
 //
 // Неудача здесь не отменяет обновления шлюза: вкладка — украшение поверх
 // работающего шлюза, а не его часть. Поэтому только сообщаем.
-func (c *Checker) updatePanelTab(ctx context.Context, version string) error {
+func (c *Checker) updatePanelTab(ctx context.Context, from source, version string) error {
 	path := ""
 	for _, p := range panelTabPaths {
 		if _, err := os.Stat(p); err == nil {
@@ -377,8 +504,7 @@ func (c *Checker) updatePanelTab(ctx context.Context, version string) error {
 		return nil // панель не найдена — вкладку и не ставили
 	}
 
-	url := "https://github.com/" + repo + "/releases/download/" + version + "/mimisetup-mqtt-tab.js"
-	body, err := c.download(ctx, url)
+	body, err := c.download(ctx, from, from.download+version+"/mimisetup-mqtt-tab.js")
 	if err != nil {
 		return err
 	}

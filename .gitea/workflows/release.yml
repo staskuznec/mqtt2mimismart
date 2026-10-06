@@ -1,0 +1,82 @@
+name: Релиз
+
+# Сборка на своём git. Gitea берёт этот файл вместо .github/workflows, GitHub
+# его не видит. Релиз выкладывается generic-пакетом: репозиторий закрытый, а
+# пакет читается учётной записью с одним правом read:package.
+#
+# Секреты репозитория:
+#   DOWNLOAD_USER, DOWNLOAD_TOKEN — учётная запись для скачивания, токен
+#     только read:package; вшивается в шлюз и в install.sh;
+#   PUBLISH_USER, PUBLISH_TOKEN — кто выкладывает пакет, токен write:package.
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  PACKAGES: https://git.kuznec.team/api/packages/skut/generic/mqtt2mimismart
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Забрать исходники с историей
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Тег должен стоять на main
+        # Релиз собирается только из main: на объекте должно быть понятно, что
+        # именно там стоит, а тег с ветки разработки такой гарантии не даёт.
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "Тег $GITHUB_REF_NAME не входит в main — релиз не собираем." >&2
+            exit 1
+          }
+
+      - name: Поставить Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Проверки
+        run: |
+          test -z "$(gofmt -l . | grep -v '^docs/')" || { gofmt -l .; exit 1; }
+          go vet ./...
+          go test -race ./...
+
+      - name: Сборка
+        env:
+          CGO_ENABLED: "0"
+          DOWNLOAD_USER: ${{ secrets.DOWNLOAD_USER }}
+          DOWNLOAD_TOKEN: ${{ secrets.DOWNLOAD_TOKEN }}
+        run: |
+          [ -n "$DOWNLOAD_TOKEN" ] || { echo "Нет секрета DOWNLOAD_TOKEN: шлюз не сможет обновляться отсюда." >&2; exit 1; }
+          version="${GITHUB_REF_NAME#v}"
+          pkg=github.com/staskuznec/mqtt2mimismart/internal/update
+          flags="-s -w -X main.version=$version -X $pkg.giteaUser=$DOWNLOAD_USER -X $pkg.giteaToken=$DOWNLOAD_TOKEN"
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$flags" -o mqtt2mimismart-linux-amd64 ./cmd/gateway
+          GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags "$flags" -o mqtt2mimismart-linux-armv7 ./cmd/gateway
+          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$flags" -o mqtt2mimismart-linux-arm64 ./cmd/gateway
+          # Обновление на объекте скачивает бинарник по сети и запускает его
+          # вместо себя. Без сверки суммы это означало бы «выполнить то, что
+          # пришло», поэтому файл сумм обязателен.
+          sha256sum mqtt2mimismart-* > SHA256SUMS
+          sed -i -e "s|@GITEA_USER@|$DOWNLOAD_USER|" -e "s|@GITEA_TOKEN@|$DOWNLOAD_TOKEN|" install.sh
+          cp deploy/mqtt2mimismart.service deploy/mimisetup-mqtt-tab.js .
+
+      - name: Выложить пакет
+        env:
+          PUBLISH_USER: ${{ secrets.PUBLISH_USER }}
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: |
+          put() { curl -fsS -u "$PUBLISH_USER:$PUBLISH_TOKEN" --upload-file "$1" "$2"; }
+          for f in mqtt2mimismart-linux-* SHA256SUMS mqtt2mimismart.service mimisetup-mqtt-tab.js install.sh; do
+            put "$f" "$PACKAGES/$GITHUB_REF_NAME/$f"
+          done
+          # Номер последней версии — последним: шлюз увидит новую версию,
+          # только когда все её файлы уже на месте. Версия пакета неизменна,
+          # поэтому latest пересоздаётся.
+          curl -fsS -u "$PUBLISH_USER:$PUBLISH_TOKEN" -X DELETE "$PACKAGES/latest" || true
+          printf '%s\n' "$GITHUB_REF_NAME" > VERSION
+          put VERSION "$PACKAGES/latest/VERSION"

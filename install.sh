@@ -16,6 +16,13 @@
 set -eu
 
 REPO="staskuznec/mqtt2mimismart"
+
+# Свой git — основное место релизов: generic-пакет Gitea. Учётная запись для
+# скачивания (токен только с правом read:package) подставляется при сборке
+# релиза; в исходниках вместо неё заглушки, и тогда файлы берутся с GitHub.
+PACKAGES="https://git.kuznec.team/api/packages/skut/generic/mqtt2mimismart"
+GITEA_USER="@GITEA_USER@"
+GITEA_TOKEN="@GITEA_TOKEN@"
 BIN_DIR="${BIN_DIR:-/opt/mqtt2mimismart}"
 STATE_DIR="${STATE_DIR:-/var/lib/mqtt2mimismart}"
 
@@ -86,25 +93,53 @@ case "$(uname -m)" in
   *) die "архитектура $(uname -m) не поддерживается" ;;
 esac
 
-# --- какая версия ----------------------------------------------------------
-VERSION="${VERSION:-}"
-if [ -z "$VERSION" ]; then
-  VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
-    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
-  [ -n "$VERSION" ] || die "не удалось узнать последнюю версию"
-fi
-say "Версия: $VERSION, платформа: $SUFFIX"
+# --- откуда и какая версия -------------------------------------------------
+#
+# Сначала свой git, при неудаче — GitHub: пока идёт переезд, установка не
+# должна зависеть от одного сервера.
+AUTH=""
+case "$GITEA_TOKEN" in @*) GITEA_TOKEN="" ;; esac
 
-BASE="https://github.com/$REPO/releases/download/$VERSION"
+# fetch качает файл; со своего git — с учётной записью.
+fetch() {
+  if [ -n "$AUTH" ]; then curl -fsSL -u "$AUTH" "$@"; else curl -fsSL "$@"; fi
+}
+
+VERSION="${VERSION:-}"
+FROM=""
+if [ -n "$GITEA_TOKEN" ]; then
+  AUTH="$GITEA_USER:$GITEA_TOKEN"
+  if [ -z "$VERSION" ]; then
+    VERSION=$(fetch "$PACKAGES/latest/VERSION" 2>/dev/null | tr -d '[:space:]') || VERSION=""
+    case "$VERSION" in v[0-9]*) ;; *) VERSION="" ;; esac
+  fi
+  if [ -n "$VERSION" ]; then
+    FROM="git.kuznec.team"
+    BASE="$PACKAGES/$VERSION"
+  else
+    AUTH=""
+  fi
+fi
+if [ -z "$FROM" ]; then
+  if [ -z "$VERSION" ]; then
+    VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+      | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
+    [ -n "$VERSION" ] || die "не удалось узнать последнюю версию"
+  fi
+  FROM="GitHub"
+  BASE="https://github.com/$REPO/releases/download/$VERSION"
+fi
+say "Версия: $VERSION, платформа: $SUFFIX, источник: $FROM"
+
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
 # --- скачиваем и сверяем ---------------------------------------------------
 say "Скачиваем…"
-curl -fsSL "$BASE/mqtt2mimismart-$SUFFIX" -o "$TMP/gateway" || die "не удалось скачать бинарник"
+fetch "$BASE/mqtt2mimismart-$SUFFIX" -o "$TMP/gateway" || die "не удалось скачать бинарник"
 
 # Сверка суммы обязательна: дальше этот файл запускается как служба.
-if curl -fsSL "$BASE/SHA256SUMS" -o "$TMP/SHA256SUMS" 2>/dev/null; then
+if fetch "$BASE/SHA256SUMS" -o "$TMP/SHA256SUMS" 2>/dev/null; then
   want=$(sed -n "s/^\([0-9a-f]\{64\}\)  *mqtt2mimismart-$SUFFIX\$/\1/p" "$TMP/SHA256SUMS" | head -1)
   [ -n "$want" ] || die "в SHA256SUMS нет строки для mqtt2mimismart-$SUFFIX"
   if command -v sha256sum >/dev/null 2>&1; then
@@ -121,7 +156,7 @@ fi
 chmod 0755 "$TMP/gateway"
 
 # Файл вкладки для панели: не критичен, поэтому без сверки и без отказа.
-curl -fsSL "$BASE/mimisetup-mqtt-tab.js" -o "$TMP/mqtt-tab.js" 2>/dev/null || true
+fetch "$BASE/mimisetup-mqtt-tab.js" -o "$TMP/mqtt-tab.js" 2>/dev/null || true
 
 # --- MQTT-брокер -----------------------------------------------------------
 #
@@ -498,7 +533,7 @@ add_panel_tab() {
   if [ -f "$TMP/mqtt-tab.js" ]; then
     cp "$TMP/mqtt-tab.js" "$PANEL/mqtt-tab.js"
   else
-    curl -fsSL "$BASE/mimisetup-mqtt-tab.js" -o "$PANEL/mqtt-tab.js" 2>/dev/null || {
+    fetch "$BASE/mimisetup-mqtt-tab.js" -o "$PANEL/mqtt-tab.js" 2>/dev/null || {
       say "Не удалось получить файл вкладки — пропускаем."
       return 0
     }

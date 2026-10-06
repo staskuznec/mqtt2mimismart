@@ -68,11 +68,16 @@ jobs:
           # SQLite взят чистый на Go, поэтому кросс-компиляция обходится без
           # тулчейна и собирается статически.
           CGO_ENABLED: "0"
+          # Учётная запись для скачивания со своего git: токен только с
+          # правом read:package. С ней шлюз берёт обновления оттуда.
+          DOWNLOAD_USER: ${{ secrets.DOWNLOAD_USER }}
+          DOWNLOAD_TOKEN: ${{ secrets.DOWNLOAD_TOKEN }}
         run: |
           version="${GITHUB_REF_NAME#v}"
           [ "$version" = "$GITHUB_REF_NAME" ] && version="$(git rev-parse --short HEAD)"
+          pkg=github.com/staskuznec/mqtt2mimismart/internal/update
           go build -trimpath \
-            -ldflags "-s -w -X main.version=$version" \
+            -ldflags "-s -w -X main.version=$version -X $pkg.giteaUser=$DOWNLOAD_USER -X $pkg.giteaToken=$DOWNLOAD_TOKEN" \
             -o "mqtt2mimismart-${{ matrix.suffix }}" ./cmd/gateway
 
       - name: Сохранить бинарник
@@ -132,6 +137,17 @@ jobs:
             printf '```\ncurl -fsSL https://github.com/%s/releases/latest/download/install.sh | sudo sh\n```\n' \
               "$GITHUB_REPOSITORY"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Учётная запись для скачивания в установщик
+        # Установщик с GitHub — точка входа для новых установок, и файлы он
+        # берёт со своего git. Без секретов заглушки остаются, и он качает с
+        # GitHub.
+        env:
+          DOWNLOAD_USER: ${{ secrets.DOWNLOAD_USER }}
+          DOWNLOAD_TOKEN: ${{ secrets.DOWNLOAD_TOKEN }}
+        run: |
+          [ -n "$DOWNLOAD_TOKEN" ] || exit 0
+          sed -i -e "s|@GITEA_USER@|$DOWNLOAD_USER|" -e "s|@GITEA_TOKEN@|$DOWNLOAD_TOKEN|" install.sh
 
       - name: Описание релиза из сообщения тега
         # Сообщение тега — это и есть «что и зачем»: оно пишется осознанно, а

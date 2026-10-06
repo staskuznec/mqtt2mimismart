@@ -1,6 +1,12 @@
 package update
 
-import "testing"
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 func TestNewer(t *testing.T) {
 	for _, tc := range []struct {
@@ -60,5 +66,75 @@ func TestGatewayURL(t *testing.T) {
 				t.Errorf("gatewayURL() = %q, ожидалось %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// Пока идёт переезд, свежий релиз может лежать только в одном источнике.
+// Шлюз берёт самую новую версию, при равной — первый источник, и качает
+// оттуда же, где её нашёл, со своей учётной записью.
+func TestCheckPicksNewestSource(t *testing.T) {
+	var auth string
+	gitea := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if u, p, ok := r.BasicAuth(); ok {
+			auth = u + ":" + p
+		}
+		_, _ = io.WriteString(w, giteaVersion+"\n")
+	}))
+	defer gitea.Close()
+	github := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"tag_name":"`+githubVersion+`","html_url":"https://github.com/x"}`)
+	}))
+	defer github.Close()
+
+	check := func() Info {
+		c := New("v0.13.5", nil)
+		c.sources = []source{
+			{name: "gitea", latest: gitea.URL, plain: true, download: gitea.URL + "/", user: "updater", token: "secret"},
+			{name: "github", latest: github.URL, download: github.URL + "/"},
+		}
+		return c.Check(context.Background())
+	}
+
+	giteaVersion, githubVersion = "v0.14.0", "v0.14.0"
+	if info := check(); info.Source != "gitea" || !info.Available || info.URL != "" {
+		t.Errorf("равные версии: %+v, ожидался свой git без ссылки на страницу", info)
+	}
+	if auth != "updater:secret" {
+		t.Errorf("учётная запись на свой git ушла как %q", auth)
+	}
+
+	giteaVersion, githubVersion = "v0.14.0", "v0.14.1"
+	if info := check(); info.Source != "github" || info.Latest != "v0.14.1" {
+		t.Errorf("на GitHub новее: %+v", info)
+	}
+
+	giteaVersion = "<html>login</html>"
+	if info := check(); info.Source != "github" || info.Error != "" {
+		t.Errorf("свой git ответил мусором: %+v, ожидался GitHub без ошибки", info)
+	}
+}
+
+var giteaVersion, githubVersion string
+
+// Gitea без доступа отправляет на страницу входа со статусом 200. Такая
+// страница не должна сойти ни за номер версии, ни за файл релиза.
+func TestLoginRedirectIsNoAccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/login" {
+			http.Redirect(w, r, "/user/login", http.StatusSeeOther)
+			return
+		}
+		_, _ = io.WriteString(w, "v9.9.9")
+	}))
+	defer srv.Close()
+
+	c := New("v0.13.5", nil)
+	s := source{name: "gitea", latest: srv.URL + "/latest", plain: true, download: srv.URL + "/"}
+	c.sources = []source{s}
+	if info := c.Check(context.Background()); info.Latest != "" || info.Error == "" {
+		t.Errorf("страница входа сошла за версию: %+v", info)
+	}
+	if _, err := c.download(context.Background(), s, srv.URL+"/v9.9.9/SHA256SUMS"); err == nil {
+		t.Error("страница входа сошла за файл релиза")
 	}
 }
