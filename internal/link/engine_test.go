@@ -254,6 +254,34 @@ func TestConditionerWritesOnlyChanges(t *testing.T) {
 	}
 }
 
+// Запрос из приложения — не статус: виртуальный кондиционер от него не
+// меняется. Когда прибор подтвердит новый режим, шлюз обязан записать его в
+// элемент, а не счесть, что писать нечего.
+func TestConditionerRequestIsNotStatus(t *testing.T) {
+	e, sh, mq := newTestEngine()
+	e.SetLinks([]Link{
+		{ID: 1, Enabled: true, Direction: In, Topic: "welrok/oz/get/typeCtrl",
+			Encode: EncodeConditioner, Values: map[string]string{"0": "heat", "1": "dry"},
+			TargetID: 335, TargetSubID: 140},
+		{ID: 2, Enabled: true, Direction: Out, Topic: "welrok/oz/set/typeCtrl",
+			Decode: DecodeCondMode, Values: map[string]string{"heat": "0", "dry": "1"},
+			TargetID: 335, TargetSubID: 140},
+	})
+	ctx := context.Background()
+
+	e.OnEvent(ctx, Event{ID: 335, SubID: 140, Payload: []byte{0x31, 25}, Sync: true}) // Heat
+	e.OnEvent(ctx, Event{ID: 335, SubID: 140, Payload: []byte{0x21, 25}})             // в приложении — Dry
+
+	if got := mq.all(); len(got) != 1 || got[0].payload != "1" {
+		t.Fatalf("на прибор ушло %+v, ожидался режим 1 (по воздуху)", got)
+	}
+
+	e.OnMessage(ctx, "welrok/oz/get/typeCtrl", []byte("1")) // прибор подтвердил
+	if sh.count() != 1 {
+		t.Fatalf("отправлено %d, ожидалась запись подтверждённого режима в элемент", sh.count())
+	}
+}
+
 // Петля: записали в лампу единицу, сервер вернул её же событием. Без защиты
 // шлюз опубликовал бы команду устройству, которое и так включено.
 func TestEchoOfOwnWriteIsNotRepublished(t *testing.T) {

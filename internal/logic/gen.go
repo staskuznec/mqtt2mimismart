@@ -61,6 +61,17 @@ const (
 	subTypeLamp   = "lamp"
 )
 
+// WithSensors добавляет исполнителю датчик температуры. Атрибуты роли общие
+// для всех заведений профиля, поэтому меняется копия.
+func (i *NewItem) WithSensors(addr string) {
+	attrs := make(map[string]string, len(i.Attrs)+1)
+	for k, v := range i.Attrs {
+		attrs[k] = v
+	}
+	attrs["temperature-sensors"] = addr
+	i.Attrs = attrs
+}
+
 // FormConditioner — роль под кондиционер. Это не форма значения на проводе, а
 // исполнитель целиком: элемент conditioner со статусом в несколько байт.
 const FormConditioner = "conditioner"

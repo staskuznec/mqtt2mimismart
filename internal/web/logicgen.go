@@ -193,6 +193,17 @@ func (s *server) genElements(w http.ResponseWriter, r *http.Request) {
 		params.Set("role_"+role.Key, item.Addr())
 	}
 
+	// Датчик исполнителя — из этой же пачки: в ней известны оба адреса.
+	created := make(map[string]string, len(roles))
+	for i, role := range roles {
+		created[role.Key] = items[i].Addr()
+	}
+	for i, role := range roles {
+		if addr, ok := created[role.Sensors]; ok && role.Sensors != "" {
+			items[i].WithSensors(addr)
+		}
+	}
+
 	data.XML = logic.RenderArea(data.Area, items)
 	data.Link = "devices/new?" + params.Encode()
 	s.render(w, "elements_new", data)

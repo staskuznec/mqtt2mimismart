@@ -136,7 +136,12 @@ func TestRenderAreaIsValidXML(t *testing.T) {
 // длины статуса.
 func TestRenderAreaConditioner(t *testing.T) {
 	cond := ItemFor(335, 140, "Пол ванная", FormConditioner, "welrok/oz")
-	cond.Attrs = map[string]string{"t-min": "5", "modes": "0xC"}
+	attrs := map[string]string{"t-min": "5", "modes": "0xC"}
+	cond.Attrs = attrs
+	cond.WithSensors("335:141")
+	if _, ok := attrs["temperature-sensors"]; ok {
+		t.Error("датчик дописан в общие атрибуты роли")
+	}
 	if cond.Kind() != "conditioner" {
 		t.Errorf("вид %q, ожидался conditioner", cond.Kind())
 	}
@@ -147,7 +152,7 @@ func TestRenderAreaConditioner(t *testing.T) {
 	})); err != nil {
 		t.Fatalf("разметка не разбирается: %v\n%s", err, out)
 	}
-	want := `<item addr="335:140" name="Пол ванная" modes="0xC" t-min="5" type="conditioner"/>`
+	want := `<item addr="335:140" name="Пол ванная" modes="0xC" t-min="5" temperature-sensors="335:141" type="conditioner"/>`
 	if !strings.Contains(out, want) {
 		t.Errorf("в разметке нет строки:\n%s\nполучилось:\n%s", want, out)
 	}

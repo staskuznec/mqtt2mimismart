@@ -475,6 +475,14 @@ func (s *server) applyTemplate(w http.ResponseWriter, r *http.Request) {
 			items = append(items, item)
 			assign[role.Key] = devtmpl.Addr{ID: item.ID, SubID: item.SubID}
 		}
+
+		// Датчик исполнителя известен только теперь: он мог быть выбран из
+		// готовых, а мог завестись в этой же пачке.
+		for i, role := range create {
+			if addr, ok := assign[role.Sensors]; ok && role.Sensors != "" {
+				items[i].WithSensors(fmt.Sprintf("%d:%d", addr.ID, addr.SubID))
+			}
+		}
 	}
 
 	device := store.Device{ID: deviceID, Name: name, TopicPrefix: prefix}

@@ -56,6 +56,11 @@ type Role struct {
 	// маски режимов и диапазон температуры задаются только так.
 	Attrs map[string]string `json:"attrs,omitempty"`
 
+	// Sensors — роль, чей элемент становится датчиком температуры
+	// исполнителя: его адрес уходит в атрибут temperature-sensors. Так плитка
+	// кондиционера показывает температуру в помещении.
+	Sensors string `json:"sensors,omitempty"`
+
 	// Types — типы элементов умного дома, которые сюда годятся: "lamp",
 	// "temperature-sensor" и прочие из logic.xml. Список сужает выбор в форме
 	// до подходящих, чтобы не искать лампу среди трёх сотен строк и не
@@ -181,6 +186,13 @@ func (t Template) Validate() error {
 			return fmt.Errorf("шаблон %q: роль %q описана дважды", t.Name, r.Key)
 		}
 		roles[r.Key] = true
+	}
+
+	for _, r := range t.Roles {
+		if r.Sensors != "" && !roles[r.Sensors] {
+			return fmt.Errorf("шаблон %q, роль %q: датчик берётся из роли %q, а она не описана",
+				t.Name, r.Key, r.Sensors)
+		}
 	}
 
 	for i, l := range t.Links {
