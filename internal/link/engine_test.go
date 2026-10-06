@@ -737,7 +737,7 @@ func TestConditionerSendsOnlyChangedField(t *testing.T) {
 	ctx := context.Background()
 
 	e.OnEvent(ctx, Event{ID: 335, SubID: 140, Payload: []byte{0x30, 13}, Sync: true}) // выкл, Heat, 18 °C
-	e.OnMessage(ctx, "welrok/oz/get/powerOff", []byte("0"))                            // прибор включён
+	e.OnMessage(ctx, "welrok/oz/get/powerOff", []byte("0"))                           // прибор включён
 	if sh.count() != 1 {
 		t.Fatalf("отправлено %d, ожидалась запись включения", sh.count())
 	}
